@@ -15,6 +15,10 @@ Chromium exactly as a respondent would (clicks, typing, keyboard), and checks:
   - the page never scrolls sideways at phone, tablet and desktop widths
   - accessibility (axe-core) in light and dark, if axe.min.js is available
   - the parser in tools/parse_responses.py can read what the page produces
+  - the PDF copy: valid file, every question and answer in it, text selectable, Nigerian-language
+    letters intact, nothing outside the margins, share-sheet button, and a clean fall-back to a
+    text-only email when the PDF cannot be made or is switched off (needs qpdf and poppler's
+    pdftotext/pdffonts for the file checks; without them those checks are reported as skipped)
 
 Usage
   pip install playwright            # and a Chromium for it (see README)
@@ -29,12 +33,16 @@ import http.server
 import itertools
 import json
 import os
+import re
+import shutil
 import socketserver
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
+import unicodedata
 import urllib.parse
 
 from playwright.sync_api import sync_playwright
@@ -722,6 +730,7 @@ def t_parser_round_trip(env):
             check(row.get("D5", "").count("|") == 10, f"grid answer has 11 rows: {row.get('D5')!r}")
             check(row.get("S1") and row.get("X3") == "2", f"other codes parsed: S1={row.get('S1')!r} X3={row.get('X3')!r}")
             check(row.get("complete") == "yes", "complete marker detected")
+            check(re.match(r"^shaping-dhar-response-\d{8}-\d{4}\.pdf$", row.get("pdf_copy", "")) is not None, f"pdf_copy column holds the attachment name: {row.get('pdf_copy')!r}")
 
 
 @test
@@ -763,6 +772,293 @@ def t_accessibility(env):
 
 # --------------------------------------------------------------------------- main
 
+# --------------------------------------------------------------------------- PDF copy
+
+PAGE_W, PAGE_H, MARGIN_X = 595.28, 841.89, 54.0
+SKIPPED = []
+
+
+def tool(name):
+    return shutil.which(name)
+
+
+def squash(text):
+    """Whitespace-free, NFC form: PDF text wraps anywhere, so compare without spaces and line breaks."""
+    return re.sub(r"\s+", "", unicodedata.normalize("NFC", text))
+
+
+def report_blocks(rep):
+    """[(code, [answer lines])] from the emailed text."""
+    blocks, cur = [], None
+    for line in rep.split("\n"):
+        m = re.match(r"^\[([A-Z]+[0-9]+[a-z]?)\] ", line)
+        if m:
+            cur = (m.group(1), [])
+            blocks.append(cur)
+        elif line.startswith("== "):
+            cur = None
+        elif cur is not None and line.startswith("  "):
+            cur[1].append(line[2:])
+    return blocks
+
+
+def survey_questions(run):
+    data = run.page.evaluate("window.DHAR_SURVEY")
+    out = {}
+    for sec in data["sections"]:
+        for q in sec["questions"]:
+            out[q["code"]] = q
+    return out
+
+
+def press_send_and_save_pdf(run, folder):
+    """Waits for the PDF to be ready, presses Send, returns (file name, saved path)."""
+    run.page.wait_for_function("document.getElementById('btn-send').textContent.indexOf('Download PDF') === 0", timeout=30000)
+    with run.page.expect_download() as dl:
+        run.page.click("#btn-send")
+    d = dl.value
+    path = os.path.join(folder, d.suggested_filename)
+    d.save_as(path)
+    run.page.wait_for_selector("#sent:not([hidden])")
+    return d.suggested_filename, path
+
+
+def verify_pdf(run, path, name, label, lossy=()):
+    """Everything about one saved PDF that does not depend on the answers' content.
+    `lossy` lists question codes whose answers contain characters no font has (checked separately)."""
+    data = open(path, "rb").read()
+    check(data.startswith(b"%PDF-1.7") and data.rstrip().endswith(b"%%EOF"), f"{label}: file starts with %PDF and ends with %%EOF")
+    check(len(data) < 700_000, f"{label}: size is reasonable ({len(data) // 1024} KB)")
+    rep = run.report()
+    check(("PDF copy: " + name) in rep.split("\n")[:8], f"{label}: the email header names the attached file ({name})")
+    if tool("qpdf"):
+        res = subprocess.run(["qpdf", "--check", path], capture_output=True, text=True)
+        check(res.returncode == 0 and "No syntax or stream encoding errors" in res.stdout, f"{label}: qpdf finds no errors: {res.stdout[-200:]} {res.stderr[-200:]}")
+        pages = int(subprocess.run(["qpdf", "--show-npages", path], capture_output=True, text=True).stdout.strip() or 0)
+    else:
+        SKIPPED.append(f"{label}: qpdf")
+        pages = 0
+    if tool("pdffonts"):
+        rows = subprocess.run(["pdffonts", path], capture_output=True, text=True).stdout.strip().split("\n")[2:]
+        check(len(rows) >= 2 and all(re.search(r"\byes\s+yes\s+yes\b", r) for r in rows), f"{label}: every font is embedded, subset and has a text map: {rows}")
+    else:
+        SKIPPED.append(f"{label}: pdffonts")
+    if not tool("pdftotext"):
+        SKIPPED.append(f"{label}: pdftotext")
+        return None
+    text = subprocess.run(["pdftotext", "-enc", "UTF-8", path, "-"], capture_output=True, text=True).stdout
+    flat = squash(text)
+
+    # every question the respondent saw is in the PDF, with its hint, and every answer is next to it
+    qs = survey_questions(run)
+    blocks = report_blocks(rep)
+    missing = []
+    for code, lines in blocks:
+        q = qs[code]
+        for needle in (q["text"], q.get("hint", "")):
+            if needle and squash(needle) not in flat:
+                missing.append((code, "question text", needle[:40]))
+        if not re.search(r"(?m)^\s*" + re.escape(code) + r"\s*$", text):
+            missing.append((code, "code", ""))
+        for line in ([] if code in lossy else lines):
+            item = line[2:] if line.startswith("- ") else line
+            m = re.match(r"^(.*): (\d) of 5$", item)
+            wanted = [m.group(1), m.group(2) + "of5"] if (m and q["type"] == "grid") else [item]
+            for w in wanted:
+                if squash(w) not in flat:
+                    missing.append((code, "answer", w[:50]))
+    check(not missing, f"{label}: all {len(blocks)} answered questions are in the PDF with their wording: {missing[:5]}")
+
+    m = re.search(r"Questions answered: (\d+) of (\d+) shown", rep)
+    answered, shown = int(m.group(1)), int(m.group(2))
+    check(squash(f"{answered} of {shown} questions") in flat, f"{label}: the summary says {answered} of {shown} questions")
+    check(text.count("(not answered)") == shown - answered, f"{label}: unanswered visible questions are listed as such ({text.count('(not answered)')} = {shown} - {answered})")
+    check(squash("Shaping Dhar survey") in flat and squash("Survey version") in flat, f"{label}: title and details are present")
+    if pages:
+        check(squash(f"Page {pages} of {pages}") in flat and squash(f"Page 1 of {pages}") in flat, f"{label}: page numbers run 1 to {pages}")
+
+    # nothing may leave the margins
+    bbox = subprocess.run(["pdftotext", "-bbox", path, "-"], capture_output=True, text=True).stdout
+    words = [(float(a), float(b), float(c), float(d)) for a, b, c, d in re.findall(r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)"', bbox)]
+    off = [w for w in words if w[0] < MARGIN_X - 1 or w[2] > PAGE_W - MARGIN_X + 1 or w[1] < 20 or w[3] > PAGE_H - 20]
+    check(words and not off, f"{label}: all {len(words)} words are inside the margins (outside: {off[:3]})")
+    return text
+
+
+def prepare_pdf_run(run, nigerian=True):
+    """Walks to the review step typing text with Nigerian-language letters into two open questions."""
+    typed = {}
+
+    def on_step(t):
+        if t == "Your view of Dhar":
+            typed["X7"] = "Ẹ kú àárọ̀. Ṣé ọmọ rẹ wà? Ɓoyayye, ɗaya, ƙarami. Igbo: ị ụ ọ ṅ. Price ₦5,000 → ≥ 2 ✓"
+            typed["X6"] = "Emoji and Japanese cannot be drawn in the PDF: 😀 日本語"
+            run.page.fill("#in-X7", typed["X7"])
+            run.page.fill("#in-X6", typed["X6"])
+    run.walk(on_step=on_step if nigerian else None, overrides={"about": about_step(areas=["software"])})
+    return typed
+
+
+@test
+def t_pdf_flow(env):
+    r = Run(env.browser, env.base).open()
+    check(r.page.evaluate("typeof window.DharPdf") == "undefined", "the PDF code is not loaded on the first screen")
+    r.pick_roles(["student", "dev"])
+    r.next()
+    try:
+        r.page.wait_for_function("typeof window.DharPdf === 'object'", timeout=8000)
+        loaded = True
+    except Exception:
+        loaded = False
+    check(loaded, "the PDF code is fetched quietly once the respondent has started")
+    typed = prepare_pdf_run(r)
+    t0 = time.time()
+    r.page.wait_for_function("document.getElementById('btn-send').textContent.indexOf('Download PDF') === 0", timeout=30000)
+    ready_after = time.time() - t0
+    check(ready_after < 3.0, f"the PDF is ready within 3 s of reaching the review step ({ready_after:.2f} s)")
+    check("PDF ready: shaping-dhar-response-" in r.page.inner_text("#pdf-note"), "the review step says the PDF is ready")
+    check("PDF copy: shaping-dhar-response-" in r.report(), "the preview of the email names the PDF copy")
+    downloads = []
+    r.page.on("download", lambda d: downloads.append(d.suggested_filename))
+    with tempfile.TemporaryDirectory() as folder:
+        name, path = press_send_and_save_pdf(r, folder)
+        check(re.match(r"^shaping-dhar-response-\d{8}-\d{4}\.pdf$", name) is not None, f"file name: {name}")
+        mt = r.mailto()
+        check(mt is not None and mt.startswith("mailto:garbaabdullahi344@gmail.com?subject="), "the email draft still opens, addressed to the owner")
+        body = urllib.parse.parse_qs(urllib.parse.urlparse(mt).query)["body"][0].replace("\r\n", "\n")
+        check(("PDF copy: " + name) in body, "the email body names the same PDF file")
+        sent = r.page.inner_text("#sent")
+        check(name in sent and "attach" in sent.lower(), "the confirmation names the file and says to attach it")
+        check(r.page.locator("#sent button:has-text('Download the PDF')").count() == 1, "the panel offers the PDF again")
+        check(r.page.locator("#sent button:has-text('Share the PDF')").count() == 0, "no share button where the browser cannot share files")
+        text = verify_pdf(r, path, name, "student+dev", lossy=("X6",))
+        if text is not None:
+            check(squash(typed["X7"]) in squash(text), f"Yoruba, Igbo and Hausa letters, the naira sign, an arrow and a tick survive in the PDF text: {typed['X7']!r}")
+            check("could not be shown in this PDF" in text, "the PDF says when some characters could not be drawn")
+            check("😀" not in text and "日本語" not in text, "undrawable characters are replaced, not garbled")
+        check("😀" in r.report() and "日本語" in r.report(), "the emailed text keeps those characters exactly")
+        if ARGS.shots and tool("pdftoppm"):
+            os.makedirs(ARGS.shots, exist_ok=True)
+            subprocess.run(["pdftoppm", "-r", "70", "-f", "1", "-l", "3", "-png", path, os.path.join(ARGS.shots, "pdf-student-dev")], capture_output=True)
+    check(len(downloads) == 1, f"exactly one file is downloaded when Send is pressed ({downloads})")
+    check(r.errors == [] and r.external == [], f"no errors and no requests to other sites: {r.errors} {r.external}")
+    r.close()
+
+
+@test
+def t_pdf_big_response(env):
+    r = Run(env.browser, env.base).open()
+    r.pick_roles(ALL_ROLES)
+    r.walk(overrides={"about": about_step(areas=["software", "web", "ai", "security"])}, long_text=380, only_required=False)
+    t0 = time.time()
+    with tempfile.TemporaryDirectory() as folder:
+        name, path = press_send_and_save_pdf(r, folder)
+        check(time.time() - t0 < 6.0, f"a four-role response with long answers is ready and saved in under 6 s ({time.time() - t0:.1f} s)")
+        text = verify_pdf(r, path, name, "all roles")
+        if tool("qpdf"):
+            pages = int(subprocess.run(["qpdf", "--show-npages", path], capture_output=True, text=True).stdout.strip())
+            check(pages >= 8, f"a large response runs to several pages ({pages})")
+        if ARGS.shots and tool("pdftoppm"):
+            subprocess.run(["pdftoppm", "-r", "70", "-f", "1", "-l", "4", "-png", path, os.path.join(ARGS.shots, "pdf-all-roles")], capture_output=True)
+        if text is not None:
+            check(text.count("Page ") >= 8, "every page carries its number")
+    check(r.errors == [], f"no errors: {r.errors}")
+    r.close()
+
+
+@test
+def t_pdf_share_button(env):
+    r = Run(env.browser, env.base)
+    r.page.add_init_script("""
+      navigator.canShare = function (d) { return !!(d && d.files && d.files.length); };
+      navigator.share = function (d) {
+        window.__shared = { name: d.files[0].name, type: d.files[0].type, size: d.files[0].size, title: d.title, text: d.text };
+        return d.files[0].slice(0, 5).text().then(function (t) { window.__shared.head = t; });
+      };
+    """)
+    r.open()
+    r.pick_roles(["student"])
+    r.walk(overrides={"about": about_step()})
+    with tempfile.TemporaryDirectory() as folder:
+        name, path = press_send_and_save_pdf(r, folder)
+    check(r.page.locator("#sent button:has-text('Share the PDF')").count() == 1, "the panel offers 'Share the PDF' when the browser can share files")
+    check("paste" in r.page.inner_text("#sent").lower(), "the panel explains that the address is copied for pasting into the To box")
+    r.page.click("#sent button:has-text('Share the PDF')")
+    r.page.wait_for_function("window.__shared && window.__shared.head")
+    sh = r.page.evaluate("window.__shared")
+    check(sh["name"] == name and sh["type"] == "application/pdf" and sh["head"] == "%PDF-" and sh["size"] > 20000, f"the shared file is the PDF: {sh['name']} {sh['type']} {sh['size']} bytes")
+    check(sh["title"] == "Shaping Dhar survey response: Student", f"share title is the email subject: {sh['title']!r}")
+    check(sh["text"].startswith("To: garbaabdullahi344@gmail.com\nSubject: Shaping Dhar survey response: Student\n\nSHAPING DHAR SURVEY RESPONSE"), "share text starts with the address, the subject and the response")
+    check(sh["text"].rstrip().endswith("== END OF RESPONSE =="), "share text carries the whole response")
+    check(r.page.evaluate("navigator.clipboard.readText()") == "garbaabdullahi344@gmail.com", "the address was copied for pasting")
+    r.close()
+
+
+@test
+def t_pdf_failure_falls_back_to_text(env):
+    r = Run(env.browser, env.base)
+    r.page.route("**/assets/pdf-fonts.js", lambda route: route.abort())
+    downloads = []
+    r.page.on("download", lambda d: downloads.append(d))
+    r.open()
+    r.pick_roles(["student"])
+    r.walk(overrides={"about": about_step()})
+    r.page.wait_for_function("document.getElementById('pdf-note').textContent.indexOf('could not be made') !== -1", timeout=30000)
+    check(r.page.inner_text("#btn-send") == "Send by email" and r.page.is_enabled("#btn-send"), "the button goes back to a plain 'Send by email', enabled")
+    check("PDF copy:" not in r.report(), "the email text does not mention a PDF that does not exist")
+    r.page.click("#btn-send")
+    r.page.wait_for_selector("#sent:not([hidden])")
+    mt = r.mailto()
+    body = urllib.parse.parse_qs(urllib.parse.urlparse(mt).query)["body"][0].replace("\r\n", "\n")
+    check(mt.startswith("mailto:garbaabdullahi344@gmail.com") and body.rstrip().endswith("== END OF RESPONSE =="), "the text email is complete and addressed to the owner")
+    check("PDF" not in r.page.inner_text("#sent"), "the confirmation does not talk about a PDF")
+    r.page.wait_for_timeout(400)
+    check(downloads == [], "nothing is downloaded")
+    r.close()
+
+
+@test
+def t_pdf_can_be_switched_off(env):
+    r = Run(env.browser, env.base)
+
+    def patch(route):
+        resp = route.fetch()
+        route.fulfill(response=resp, body=resp.text().replace("pdfEnabled: true", "pdfEnabled: false"))
+    r.page.route("**/assets/config.js", patch)
+    requests, downloads = [], []
+    r.page.on("request", lambda q: requests.append(q.url))
+    r.page.on("download", lambda d: downloads.append(d))
+    r.open()
+    check(r.page.evaluate("window.DHAR_CONFIG.pdfEnabled") is False, "the flag is off")
+    r.pick_roles(["student"])
+    r.walk(overrides={"about": about_step()})
+    check(r.page.inner_text("#btn-send") == "Send by email" and r.page.is_enabled("#btn-send"), "button reads 'Send by email'")
+    check("PDF" not in r.page.inner_text("#step-review"), "the review step does not mention a PDF")
+    check("PDF copy:" not in r.report(), "no PDF line in the email text")
+    r.page.click("#btn-send"); r.page.wait_for_selector("#sent:not([hidden])")
+    check(r.mailto() is not None and "PDF" not in r.page.inner_text("#sent"), "the email opens and the panel is the text-only one")
+    check(not [u for u in requests if "pdf" in u.lower()], f"the PDF code is never requested: {[u for u in requests if 'pdf' in u.lower()]}")
+    check(downloads == [], "nothing is downloaded")
+    r.close()
+
+
+@test
+def t_pdf_from_disk(env):
+    r = Run(env.browser, env.base, permissions=False)
+    r.page.goto("file://" + os.path.join(os.path.abspath(ARGS.site), "index.html"))
+    r.page.wait_for_selector("html[data-ready=true]")
+    r.pick_roles(["student"])
+    r.walk(overrides={"about": about_step()})
+    try:
+        r.page.wait_for_function("document.getElementById('btn-send').textContent.indexOf('Download PDF') === 0", timeout=30000)
+        ok = True
+    except Exception:
+        ok = False
+    check(ok, "the PDF is made when the page is opened straight from disk (file://)")
+    r.close()
+
+
+
 class Env:
     pass
 
@@ -789,6 +1085,8 @@ def main():
     server.shutdown()
 
     failed = [r for r in RESULTS if not r[1]]
+    if SKIPPED:
+        print("\nSKIPPED (tool not installed): " + ", ".join(sorted(set(SKIPPED))))
     print(f"\n{len(RESULTS) - len(failed)} of {len(RESULTS)} checks passed in {len(TESTS)} tests")
     for name, ok, msg in failed:
         print(f"  FAILED [{name}] {msg}")

@@ -20,5 +20,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-The font in assets/fonts/ (Archivo) is licensed separately under the SIL Open
-Font License 1.1; see assets/fonts/OFL.txt.
+The fonts are licensed separately: Archivo under the SIL Open Font License 1.1
+(assets/fonts/OFL.txt), and the DejaVu Sans subset embedded for the PDF copy
+under the Bitstream Vera licence with public-domain additions
+(assets/fonts/DEJAVU-LICENSE.txt).

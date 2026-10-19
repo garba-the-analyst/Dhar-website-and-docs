@@ -25,15 +25,17 @@ WHAT IT ACCEPTS (standard library only, no installs)
   - several responses in one file
 
 CSV COLUMNS
-  source, response, survey_version, submitted, roles, answered, wording, complete, then one
-  column per question code in the order the codes first appear.
+  source, response, survey_version, submitted, roles, answered, wording, pdf_copy, complete,
+  then one column per question code in the order the codes first appear.
     - single choice: the option text
     - multiple choice: the options joined with " | "
     - 1-5 and 0-10 scales: the number only
     - grid: "statement: number" pairs joined with " | "
     - open text: the text (line breaks kept inside the cell)
   wording is "full" or "shortened" (long emails carry every answer with shortened
-  question text, see README). complete is "yes" when the response ended with
+  question text, see README). pdf_copy is the file name of the PDF the respondent was told to
+  attach (empty when no PDF was made), so a PDF in the mailbox can be paired with its row.
+  complete is "yes" when the response ended with
   "== END OF RESPONSE ==" and "no" when the email was cut short (the first part,
   which holds the contact details and basics, is still read).
 
@@ -57,7 +59,7 @@ QUESTION = re.compile(r"^\[([A-Z]+[0-9]+[a-z]?)\]\s+(.*)$")
 SCALE = re.compile(r"^\s*(\d+) of (\d+)(?: \(.*\))?$")
 GRID_ROW = re.compile(r"^- (.*): (\d+) of \d+$")
 GRID_KEY = re.compile(r"^\(1 = .*\)$")
-FIXED_COLUMNS = ["source", "response", "survey_version", "submitted", "roles", "answered", "wording", "complete"]
+FIXED_COLUMNS = ["source", "response", "survey_version", "submitted", "roles", "answered", "wording", "pdf_copy", "complete"]
 
 
 def message_text(msg):
@@ -147,6 +149,8 @@ def parse_block(block):
             rec["answered"] = value
         elif key == "question wording":
             rec["wording"] = value
+        elif key == "pdf copy":
+            rec["pdf_copy"] = value
         i += 1
     # body
     code = None

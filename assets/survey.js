@@ -46,6 +46,16 @@
 
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  /* The folder this script was loaded from. The PDF code (pdf.js, pdf-fonts.js) sits beside it
+     and is loaded on demand, so the survey itself stays light. */
+  var ASSET_BASE = (function () {
+    var src = document.currentScript && document.currentScript.src;
+    return src ? src.replace(/[^\/]*$/, '') : 'assets/';
+  })();
+
+  /* The PDF copy can be switched off in config.js (pdfEnabled: false). */
+  var PDF_ON = CONFIG.pdfEnabled !== false;
+
   /* ======================================================================= *
    * 2. Small helpers
    * ======================================================================= */
@@ -90,6 +100,8 @@
   function fileStamp(d) {
     return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes());
   }
+
+  function pdfFileName(d) { return 'shaping-dhar-response-' + fileStamp(d) + '.pdf'; }
 
   function recipient() { return CONFIG.recipientUser + '@' + CONFIG.recipientDomain; }
 
@@ -593,6 +605,7 @@
   function go(stepId, options) {
     state.stepId = stepId;
     setNavError(0);
+    if (stepId !== 'start') { prefetchPdf(); }
     if (stepId === 'review') { buildReview(); }
     refresh();
     save();
@@ -696,9 +709,11 @@
 
   /* Builds the plain-text response from the questions that are currently visible and answered.
      Answers to questions that branching has hidden are kept in storage but never reported.
-     compact=true gives the same answers with shortened question wording (see buildMailto). */
-  function buildReport(compact) {
-    var now = new Date();
+     compact=true gives the same answers with shortened question wording (see buildMailto).
+     `when` fixes the timestamp (so the text and the PDF agree); `pdfName` adds a "PDF copy:"
+     header line so the owner can pair an attachment with its message. */
+  function buildReport(compact, when, pdfName) {
+    var now = when || new Date();
     var shown = 0, answered = 0, body = [];
     reportSections().forEach(function (sec) {
       var chunk = [];
@@ -717,11 +732,57 @@
       'Submitted: ' + stamp(now) + (tz ? ' ' + tz : ''),
       'Roles: ' + roleShortNames().join('; '),
       'Questions answered: ' + answered + ' of ' + shown + ' shown',
-      'Question wording: ' + (compact ? 'shortened' : 'full'),
-      ''
+      'Question wording: ' + (compact ? 'shortened' : 'full')
     ];
+    if (pdfName) { head.push('PDF copy: ' + pdfName); }
+    head.push('');
     var text = head.concat(body, ['== END OF RESPONSE ==']).join('\n');
     return { text: text, answered: answered, shown: shown, date: now };
+  }
+
+  /* One visible question, described for the PDF (the shape assets/pdf.js documents). Unlike the
+     email text, the PDF also lists the visible questions that were left blank. */
+  function describeQuestion(q) {
+    var d = { code: q.code, text: q.text, hint: q.hint || '', kind: 'none' };
+    if (!isAnswered(q)) { return d; }
+    var v = state.answers[q.code], labels = q.labels || {};
+    switch (q.type) {
+      case 'radio': d.kind = 'text'; d.value = labelFor(q, v); break;
+      case 'checkbox': d.kind = 'list'; d.items = v.map(function (id) { return labelFor(q, id); }); break;
+      case 'likert': d.kind = 'scale'; d.value = v; d.max = 5; d.legend = '1 = ' + labels[1] + ', 5 = ' + labels[5]; break;
+      case 'scale': d.kind = 'scale'; d.value = v; d.max = q.to; d.legend = q.from + ' = ' + labels.from + ', ' + q.to + ' = ' + labels.to; break;
+      case 'grid':
+        d.kind = 'grid';
+        d.legend = '1 = ' + labels[1] + ', 5 = ' + labels[5];
+        d.rows = q.rows.map(function (row, i) { return { label: row, value: v && typeof v[i] === 'number' ? v[i] : null }; });
+        break;
+      default: d.kind = 'text'; d.value = String(v);
+    }
+    return d;
+  }
+
+  function pdfModel(report, when, name) {
+    var sections = [];
+    reportSections().forEach(function (sec) {
+      var qs = visibleQuestions(sec).map(describeQuestion);
+      if (qs.length) { sections.push({ title: sec.title, questions: qs }); }
+    });
+    var tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { /* optional */ }
+    return {
+      title: SURVEY.title + ' survey',
+      subtitle: 'A copy of the questions and your answers',
+      meta: [
+        ['Survey version', SURVEY.version],
+        ['Submitted', stamp(when) + (tz ? ' ' + tz : '')],
+        ['Roles', roleShortNames().join('; ')],
+        ['Answered', report.answered + ' of ' + report.shown + ' questions'],
+        ['File', name]
+      ],
+      sections: sections,
+      footer: SURVEY.title + ' survey, version ' + SURVEY.version + ', ' + stamp(when).replace(/ \(.*$/, ''),
+      created: when
+    };
   }
 
   function subjectLine() {
@@ -833,26 +894,123 @@
       class: 'field report', readonly: true, rows: '14', id: 'report-text', spellcheck: 'false',
       'aria-label': 'Your answers, exactly as they will be emailed'
     });
-    dom.sendBtn = h('button', { type: 'button', class: 'btn primary big', id: 'btn-send', text: 'Send by email', onclick: onSend });
+    dom.sendBtn = h('button', { type: 'button', class: 'btn primary big', id: 'btn-send', text: PDF_ON ? 'Download PDF and email it' : 'Send by email', onclick: onSend });
+    dom.pdfNote = h('p', { class: 'send-note', id: 'pdf-note', role: 'status', hidden: !PDF_ON });
     dom.sent = h('div', { class: 'sent', id: 'sent', hidden: true, tabindex: '-1', role: 'region', 'aria-labelledby': 'sent-title' });
 
     var el = h('section', { class: 'step', id: 'step-review', hidden: true, 'aria-labelledby': headingId, 'data-step': 'review' },
       h('header', { class: 'step-head' }, count, heading,
-        h('p', { class: 'step-intro', text: 'Sending opens your email app with your answers already written and addressed to the Dhar project. Nothing is sent until you press Send there.' })),
+        h('p', { class: 'step-intro', text: PDF_ON ?
+          'Sending saves a PDF copy of your questions and answers on this device and opens your email app with a message already written and addressed to the Dhar project. Attach the PDF, then press Send there. Nothing is sent until you press Send.' :
+          'Sending opens your email app with your answers already written and addressed to the Dhar project. Nothing is sent until you press Send there.' })),
       dom.summary,
       h('details', { class: 'preview' }, h('summary', { text: 'Read exactly what will be emailed' }), dom.reportBox),
-      h('div', { class: 'send-row' }, dom.sendBtn,
+      h('div', { class: 'send-row' }, dom.sendBtn, dom.pdfNote,
         h('p', { class: 'send-note', text: 'Your email app opens with the message ready. If it does not, the options appear below.' })),
       dom.sent);
     dom.step.review = { el: el, count: count, heading: heading, sec: REVIEW };
     return el;
   }
 
+  /* ---- the PDF copy: loaded on demand, built when the review step opens ---------------- */
+
+  var pdfCode = null;   /* promise for pdf-fonts.js + pdf.js, started at most once at a time */
+
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var el = document.createElement('script');
+      el.src = src;
+      el.async = true;
+      el.onload = function () { resolve(); };
+      el.onerror = function () { reject(new Error('Could not load ' + src)); };
+      document.head.appendChild(el);
+    });
+  }
+
+  function loadPdfCode() {
+    if (!pdfCode) {
+      pdfCode = loadScript(ASSET_BASE + 'pdf-fonts.js')
+        .then(function () { return loadScript(ASSET_BASE + 'pdf.js'); })
+        .then(function () { if (!window.DharPdf || !window.DharPdf.supported()) { throw new Error('PDF not supported here'); } });
+      pdfCode.catch(function () { pdfCode = null; });   /* a later attempt may succeed */
+    }
+    return pdfCode;
+  }
+
+  /* Once the respondent has started, fetch the PDF code quietly so the review step is instant. */
+  function prefetchPdf() {
+    if (PDF_ON && !pdfCode && typeof Promise !== 'undefined') { loadPdfCode().catch(function () { /* reported on the review step */ }); }
+  }
+
+  function setSendState() {
+    var p = dom.pdf;
+    if (!PDF_ON || !p) {
+      dom.sendBtn.disabled = false;
+      dom.sendBtn.textContent = 'Send by email';
+      return;
+    }
+    if (p.status === 'preparing') {
+      dom.sendBtn.disabled = true;
+      dom.sendBtn.textContent = 'Preparing your PDF...';
+      dom.pdfNote.textContent = 'Making the PDF copy of your answers on this device.';
+    } else if (p.status === 'ready') {
+      dom.sendBtn.disabled = false;
+      dom.sendBtn.textContent = 'Download PDF and email it';
+      dom.pdfNote.textContent = 'PDF ready: ' + p.name + ' (' + Math.max(1, Math.round(p.size / 1024)) + ' KB).';
+    } else {
+      dom.sendBtn.disabled = false;
+      dom.sendBtn.textContent = 'Send by email';
+      dom.pdfNote.textContent = 'The PDF could not be made on this device. Your email will carry your answers as text instead.';
+    }
+  }
+
+  /* The preview shows exactly what will be emailed, including whether it names a PDF copy. */
+  function refreshPreview() {
+    var named = PDF_ON && dom.pdf && dom.pdf.status !== 'failed';
+    dom.reportBox.value = buildReport(false, dom.when, named ? dom.pdf.name : null).text;
+  }
+
+  function startPdf(report) {
+    dom.pdfToken = (dom.pdfToken || 0) + 1;
+    var token = dom.pdfToken, when = dom.when, name = pdfFileName(when);
+    var mine = dom.pdf = { status: 'preparing', name: name };
+    setSendState();
+
+    function fail() {
+      if (token !== dom.pdfToken || mine.status !== 'preparing') { return; }
+      mine.status = 'failed';
+      refreshPreview();
+      setSendState();
+    }
+    window.setTimeout(fail, 20000);   /* a very slow connection must not block sending */
+
+    loadPdfCode().then(function () {
+      return window.DharPdf.build(pdfModel(report, when, name));
+    }).then(function (bytes) {
+      if (token !== dom.pdfToken || mine.status !== 'preparing') { return; }
+      var blob = new Blob([bytes], { type: 'application/pdf' });
+      var file = null;
+      try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) { file = null; }
+      mine.status = 'ready';
+      mine.blob = blob;
+      mine.file = file;
+      mine.size = bytes.length;
+      setSendState();
+    }).catch(fail);
+  }
+
   function buildReview() {
-    var report = buildReport(false);
+    dom.when = new Date();
+    var report = buildReport(false, dom.when, PDF_ON ? pdfFileName(dom.when) : null);
     dom.summary.textContent = 'You answered ' + report.answered + ' questions. Roles: ' + (roleShortNames().join(', ') || 'none') + '.';
     dom.reportBox.value = report.text;
     dom.sent.hidden = true;
+    if (PDF_ON && typeof Promise !== 'undefined') {
+      startPdf(report);
+    } else {
+      dom.pdf = null;
+      setSendState();
+    }
   }
 
   /* Re-checks every visible required question. Used as a safety net before sending:
@@ -882,16 +1040,45 @@
       focusQuestion(invalid.questions[0]);
       return;
     }
-    var report = buildReport(false);              /* complete wording: clipboard, download, preview */
-    var compact = buildReport(true);              /* same answers, shorter question wording */
+    var when = dom.when || new Date();
+    var pdf = PDF_ON && dom.pdf && dom.pdf.status === 'ready' ? dom.pdf : null;
+    var report = buildReport(false, when, pdf ? pdf.name : null);   /* complete wording: clipboard, download, preview */
+    var compact = buildReport(true, when, pdf ? pdf.name : null);   /* same answers, shorter question wording */
     var subject = subjectLine();
     var mail = buildMailto(subject, report.text, compact.text);
     var links = buildWebLinks(subject, report.text, compact.text);
 
-    /* Start the copy first (it needs the click's permission), then open the email app. */
+    /* Everything here runs inside the click, because browsers only allow these actions then:
+       copy the full text, save the PDF, open the email app. */
     var copied = copyText(report.text);
+    if (pdf && CONFIG.pdfAutoDownload !== false) { downloadPdf(pdf); }
     openMailto(mail.url);
-    copied.then(function (ok) { showSent(report, subject, mail, links, ok); });
+    copied.then(function (ok) { showSent(report, subject, mail, links, ok, pdf); });
+  }
+
+  function downloadPdf(pdf) {
+    var url = URL.createObjectURL(pdf.blob);
+    var a = h('a', { href: url, download: pdf.name, hidden: true });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.setTimeout(function () { URL.revokeObjectURL(url); }, 60000);   /* some phones need the link alive for a while */
+  }
+
+  function canSharePdf(pdf) {
+    try {
+      return !!(pdf && pdf.file && typeof navigator.share === 'function' && navigator.canShare && navigator.canShare({ files: [pdf.file] }));
+    } catch (e) { return false; }
+  }
+
+  /* The share sheet attaches the file for you, but it cannot choose the recipient, so the
+     address is copied for pasting into the To box and also written at the top of the text. */
+  function sharePdf(pdf, subject, report) {
+    copyText(recipient());
+    var data = { files: [pdf.file], title: subject, text: 'To: ' + recipient() + '\nSubject: ' + subject + '\n\n' + report.text };
+    navigator.share(data).then(function () { announce('Shared.'); }, function (err) {
+      if (!err || err.name !== 'AbortError') { announce('Sharing did not work. Download the PDF and attach it in your email app.'); }
+    });
   }
 
   function downloadReport(report) {
@@ -904,13 +1091,21 @@
     window.setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
   }
 
-  function showSent(report, subject, mail, links, copiedOk) {
+  function showSent(report, subject, mail, links, copiedOk, pdf) {
     var box = dom.sent;
     box.textContent = '';
     box.appendChild(h('h3', { class: 'sent-title', id: 'sent-title', text: 'Your email is ready' }));
-    box.appendChild(h('ol', { class: 'sent-steps' },
-      h('li', { text: 'Check the message in your email app. It should list your answers and end with "END OF RESPONSE".' }),
-      h('li', { text: 'Press Send in your email app. Until you do, nothing has been sent.' })));
+    var steps = h('ol', { class: 'sent-steps' });
+    if (pdf) {
+      steps.appendChild(h('li', null,
+        CONFIG.pdfAutoDownload !== false ? 'A PDF copy of your questions and answers was saved to this device as ' : 'Your PDF copy is ready: ',
+        h('strong', { text: pdf.name }), '. If you cannot find it, use "Download the PDF" below.'));
+      steps.appendChild(h('li', { text: 'In the email that opened, attach that PDF (look for the paperclip). The message also lists your answers as text, so nothing is lost if you cannot attach it.' }));
+    } else {
+      steps.appendChild(h('li', { text: 'Check the message in your email app. It should list your answers and end with "END OF RESPONSE".' }));
+    }
+    steps.appendChild(h('li', { text: 'Press Send in your email app. Until you do, nothing has been sent.' }));
+    box.appendChild(steps);
 
     if (mail.tier === 'compact') {
       box.appendChild(h('p', { class: 'note', text: 'The message is long, so your email app received your answers with the long question wording shortened. Every answer is included.' }));
@@ -925,6 +1120,13 @@
     }
 
     var actions = h('div', { class: 'actions' });
+    var shareable = canSharePdf(pdf);
+    if (pdf) {
+      actions.appendChild(h('button', { type: 'button', class: 'btn ghost', text: 'Download the PDF', onclick: function () { downloadPdf(pdf); } }));
+    }
+    if (shareable) {
+      actions.appendChild(h('button', { type: 'button', class: 'btn ghost', text: 'Share the PDF', onclick: function () { sharePdf(pdf, subject, report); } }));
+    }
     actions.appendChild(h('button', {
       type: 'button', class: 'btn ghost', text: 'Copy answers',
       onclick: function () { copyText(report.text).then(function (ok) { announce(ok ? 'Answers copied.' : 'Copy failed. Select the text in the box above and copy it.'); }); }
@@ -935,8 +1137,11 @@
     });
     box.appendChild(h('p', { class: 'sent-lead', text: 'Nothing opened, or you use webmail? Pick another way:' }));
     box.appendChild(actions);
+    if (shareable) {
+      box.appendChild(h('p', { class: 'note', text: '"Share the PDF" attaches the file for you from your phone\'s share menu. It cannot fill in the address, so the address is copied for you to paste into the To box.' }));
+    }
     box.appendChild(h('p', { class: 'sent-manual' }, 'Writing it yourself: to ', h('strong', { text: recipient() }),
-      ', subject "' + subject + '", and paste your answers in the body.'));
+      ', subject "' + subject + '", and paste your answers in the body' + (pdf ? ', then attach the PDF.' : '.')));
 
     box.appendChild(h('div', { class: 'sent-done' },
       h('p', { text: 'Thank you. Your answers help decide what gets built and how it is taught.' }),

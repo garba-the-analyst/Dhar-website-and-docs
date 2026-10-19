@@ -47,6 +47,20 @@ window.DHAR_CONFIG = {
   mailtoLimitOther: 7500,
   webComposeLimit: 7000,
 
+  /*
+   * PDF COPY OF THE RESPONSE
+   * On the review step the page makes a PDF of the questions and the respondent's answers,
+   * entirely on their device. Pressing Send saves it and opens the email draft; the
+   * respondent attaches it. (A web page cannot attach a file to an email by itself.)
+   * The draft always carries the answers as text too, so nothing depends on the attachment.
+   *
+   *   pdfEnabled      : false removes the PDF step and goes back to a text-only email
+   *   pdfAutoDownload : false makes the PDF a button on the confirmation panel instead of
+   *                     saving it as soon as Send is pressed
+   */
+  pdfEnabled: true,
+  pdfAutoDownload: true,
+
   /* Browser storage key prefix for unfinished answers (kept on the device only). */
   storagePrefix: 'dhar-survey',
 
