@@ -42,6 +42,9 @@
  *   autocomplete string Optional. A browser autofill hint for text fields, for
  *                       example 'country-name' or 'email'. Default 'off'.
  *   placeholder string  Optional grey example text for text, textarea and email.
+ *   replyTo     boolean Optional. When the answer contains an email address, the relay
+ *                       (relay/Code.gs) uses it as the Reply-To of the delivered message.
+ *                       Set it on the contact question only.
  *
  *   radio / checkbox
  *     options  array    Strings, or objects {id, label, hint, short, other, exclusive}.
@@ -517,7 +520,7 @@
           { code: 'C1', type: 'radio', required: true,
             text: 'Would you like to stay informed as Dhar develops: early access, updates and ways to contribute?',
             options: [{ id: 'yes', label: 'Yes, here is how to reach me' }, { id: 'no', label: 'Not right now' }] },
-          { code: 'C2', type: 'text', required: true, showIf: { q: 'C1', is: 'yes' }, autocomplete: 'email',
+          { code: 'C2', type: 'text', required: true, showIf: { q: 'C1', is: 'yes' }, autocomplete: 'email', replyTo: true,
             text: 'What email address or other contact should we use?',
             placeholder: 'An email address or WhatsApp number' }
         ]

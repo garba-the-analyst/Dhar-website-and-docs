@@ -61,6 +61,29 @@ window.DHAR_CONFIG = {
   pdfEnabled: true,
   pdfAutoDownload: true,
 
+  /*
+   * DIRECT DELIVERY (the relay)
+   * With relayUrl set, the main button is "Send my answers": the page posts the answers and the
+   * PDF copy to a small Google Apps Script web app that you run (relay/Code.gs, set up with
+   * relay/SETUP.md), and that script emails both to you, PDF attached, with the respondent's
+   * address (if they gave one) as Reply-To. The respondent does not have to open an email app.
+   *
+   * The email-draft route stays available in two places: as a button next to "Send my answers"
+   * for people who prefer to send it themselves, and automatically when the relay cannot be
+   * reached, is busy, or its delivery cannot be confirmed. Nothing is lost either way.
+   *
+   *   relayUrl       : the web app URL, ending in /exec. Leave '' to use the email-draft route only.
+   *   relayToken     : must equal CONFIG.TOKEN in relay/Code.gs. It is visible in the page source, so
+   *                    it only stops stray requests; it is not a password.
+   *   relayTimeoutMs : how long to wait for the relay's answer, per attempt (one retry follows a
+   *                    network failure; the relay ignores a repeated response ID).
+   *
+   * Before turning it on, open relay-check.html on the published site and press the buttons.
+   */
+  relayUrl: '',
+  relayToken: 'db81919a8f6168304dfcedc0',
+  relayTimeoutMs: 30000,
+
   /* Browser storage key prefix for unfinished answers (kept on the device only). */
   storagePrefix: 'dhar-survey',
 

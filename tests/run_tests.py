@@ -15,6 +15,10 @@ Chromium exactly as a respondent would (clicks, typing, keyboard), and checks:
   - the page never scrolls sideways at phone, tablet and desktop widths
   - accessibility (axe-core) in light and dark, if axe.min.js is available
   - the parser in tools/parse_responses.py can read what the page produces
+  - the relay (direct delivery): the REAL relay/Code.gs runs behind relay/test/mock_apps_script.js, a local
+    server that behaves like an Apps Script web app (redirect to a second origin, CORS on the answer, no
+    pre-flight). Covers delivery with the PDF attached, Reply-To, retries, unconfirmed delivery, timeouts,
+    errors and quota, the email fallback, and that nothing is ever sent twice (needs node; skipped without it)
   - the PDF copy: valid file, every question and answer in it, text selectable, Nigerian-language
     letters intact, nothing outside the margins, share-sheet button, and a clean fall-back to a
     text-only email when the PDF cannot be made or is switched off (needs qpdf and poppler's
@@ -22,7 +26,7 @@ Chromium exactly as a respondent would (clicks, typing, keyboard), and checks:
 
 Usage
   pip install playwright            # and a Chromium for it (see README)
-  python3 tests/run_tests.py [--site DIR] [--shots DIR] [--chromium PATH] [--axe PATH]
+  python3 tests/run_tests.py [--site DIR] [--shots DIR] [--chromium PATH] [--axe PATH] [--only TEXT]
 
 Environment: CHROMIUM (browser path), AXE_JS (path to axe.min.js, from `npm pack axe-core`).
 Exit status is 0 only if every check passed.
@@ -44,6 +48,7 @@ import time
 import traceback
 import unicodedata
 import urllib.parse
+import urllib.request
 
 from playwright.sync_api import sync_playwright
 
@@ -55,6 +60,7 @@ ap.add_argument("--site", default=ROOT, help="folder that contains index.html")
 ap.add_argument("--shots", default=None, help="folder for screenshots (optional)")
 ap.add_argument("--chromium", default=os.environ.get("CHROMIUM"), help="path to a Chromium/Chrome binary")
 ap.add_argument("--axe", default=os.environ.get("AXE_JS"), help="path to axe.min.js")
+ap.add_argument("--only", default=None, help="run only the tests whose name contains this text (for example: relay)")
 ARGS = ap.parse_args()
 
 RESULTS = []          # (name, ok, detail)
@@ -716,16 +722,41 @@ def t_parser_round_trip(env):
     r.close()
     with tempfile.TemporaryDirectory() as d:
         src = os.path.join(d, "mail.txt")
-        # two copies, one of them quoted the way a reply or forward would quote it
+        import csv
+        # the same response twice (one copy quoted the way a reply or forward would quote it) is ONE response
         open(src, "w", encoding="utf-8").write("From: someone\nSubject: x\n\n" + rep + "\n\n> " + rep.replace("\n", "\n> ") + "\n")
         out = os.path.join(d, "out.csv")
         res = subprocess.run([sys.executable, "-I", parser, src, "-o", out], capture_output=True, text=True)
         check(res.returncode == 0, f"parser exits cleanly: {res.stderr[-300:]}")
-        import csv
+        check("1 duplicate merged" in res.stderr, f"the parser reports the merged duplicate: {res.stderr.strip()!r}")
         rows = list(csv.DictReader(open(out, encoding="utf-8")))
-        check(len(rows) == 2, f"parser finds both responses ({len(rows)})")
+        check(len(rows) == 1, f"two copies with the same response ID give one row ({len(rows)})")
+        # two different responses (a different ID in the second copy) stay two rows
+        rid = re.search(r"Response ID: (\S+)", rep).group(1)
+        other = rep.replace(rid, rid[:-6] + "zzzzzz")
+        open(src, "w", encoding="utf-8").write("From: someone\nSubject: x\n\n" + rep + "\n\n> " + other.replace("\n", "\n> ") + "\n")
+        res = subprocess.run([sys.executable, "-I", parser, src, "-o", out], capture_output=True, text=True)
+        rows = list(csv.DictReader(open(out, encoding="utf-8")))
+        check(len(rows) == 2 and "duplicate" not in res.stderr, f"different response IDs stay separate rows ({len(rows)})")
+        # a cut-short copy is replaced by the complete one, whichever comes first
+        cut = rep.split("== PERSONA")[0] if "== PERSONA" in rep else "\n".join(rep.split("\n")[:20])
+        open(src, "w", encoding="utf-8").write(cut + "\n\n" + rep + "\n")
+        res = subprocess.run([sys.executable, "-I", parser, src, "-o", out], capture_output=True, text=True)
+        rows = list(csv.DictReader(open(out, encoding="utf-8")))
+        check(len(rows) == 1 and rows[0]["complete"] == "yes" and rows[0]["A1"] == "Nigeria", f"a cut-short copy is replaced by the complete one: {len(rows)} row(s), complete={rows[0]['complete'] if rows else None}")
+        # a response without an ID is never merged with another
+        legacy = re.sub(r"(?m)^Response ID: .*\n", "", rep)
+        open(src, "w", encoding="utf-8").write(legacy + "\n\n" + legacy + "\n")
+        res = subprocess.run([sys.executable, "-I", parser, src, "-o", out], capture_output=True, text=True)
+        rows = list(csv.DictReader(open(out, encoding="utf-8")))
+        check(len(rows) == 2, f"responses without an ID are never merged ({len(rows)})")
+        # the main file, for the field checks
+        open(src, "w", encoding="utf-8").write("From: someone\nSubject: x\n\n" + rep + "\n")
+        subprocess.run([sys.executable, "-I", parser, src, "-o", out], capture_output=True, text=True)
+        rows = list(csv.DictReader(open(out, encoding="utf-8")))
         if rows:
             row = rows[0]
+            check(row.get("response_id") == rid, f"response_id column holds the reference: {row.get('response_id')!r}")
             check(row.get("A1") == "Nigeria" and row.get("roles") == "Student; Developer or engineer", f"A1/roles parsed: {row.get('A1')!r} {row.get('roles')!r}")
             check(row.get("D5", "").count("|") == 10, f"grid answer has 11 rows: {row.get('D5')!r}")
             check(row.get("S1") and row.get("X3") == "2", f"other codes parsed: S1={row.get('S1')!r} X3={row.get('X3')!r}")
@@ -1059,6 +1090,546 @@ def t_pdf_from_disk(env):
 
 
 
+# --------------------------------------------------------------------------- the relay (direct delivery)
+#
+# These tests run the REAL relay/Code.gs behind relay/test/mock_apps_script.js (a local web server that
+# behaves like an Apps Script web app: POST, a redirect to a second origin, CORS headers on the answer,
+# no answer to a pre-flight). The "emails" it sends are read back from /__outbox.
+
+RELAY = {}
+
+
+def start_relay():
+    node = shutil.which("node")
+    script = os.path.join(ROOT, "relay", "test", "mock_apps_script.js")
+    if not node or not os.path.exists(script):
+        return None
+    proc = subprocess.Popen([node, script], stdout=subprocess.PIPE, text=True)
+    info = json.loads(proc.stdout.readline())
+    RELAY.update(proc=proc, origin=f"http://127.0.0.1:{info['port']}", echo=f"http://127.0.0.1:{info['echoPort']}")
+    RELAY["url"] = RELAY["origin"] + "/macros/s/MOCK/exec"
+    return proc
+
+
+def relay_call(path, data=None):
+    req = urllib.request.Request(RELAY["origin"] + path, data=None if data is None else json.dumps(data).encode(),
+                                 method="GET" if data is None else "POST")
+    with urllib.request.urlopen(req, timeout=10) as res:
+        return json.loads(res.read().decode())
+
+
+def relay_reset():
+    relay_call("/__reset", {})
+
+
+def relay_mode(**mode):
+    relay_call("/__mode", mode)
+
+
+def relay_run(env, token=None, timeout_ms=None, url=None, **run_kwargs):
+    """A Run whose config.js points at the mock relay (and optionally has another token or timeout)."""
+    r = Run(env.browser, env.base, **run_kwargs)
+    target = url or RELAY["url"]
+
+    def patch(route):
+        resp = route.fetch()
+        body = resp.text().replace("relayUrl: ''", f"relayUrl: '{target}'")
+        if token is not None:
+            body = re.sub(r"relayToken: '[^']*'", f"relayToken: '{token}'", body)
+        if timeout_ms is not None:
+            body = re.sub(r"relayTimeoutMs: \d+", f"relayTimeoutMs: {timeout_ms}", body)
+        route.fulfill(response=resp, body=body)
+    r.page.route("**/assets/config.js", patch)
+    return r
+
+
+CONTACT = "ada.obi@example.com or WhatsApp +234 801 234 5678"
+
+
+def relay_walk(r, contact=CONTACT, roles=("student", "dev")):
+    """Opens the page, picks roles, answers the required questions, and lands on the review step.
+    contact=None answers 'Not right now' to the contact question (an anonymous response)."""
+    r.open()
+    r.pick_roles(list(roles))
+
+    def on_step(t):
+        if t == "Stay in touch":
+            if contact is None:
+                r.page.check("#in-C1-no")
+            else:
+                r.page.check("#in-C1-yes")
+                r.page.fill("#in-C2", contact)
+    r.walk(on_step=on_step, overrides={"about": about_step(areas=["software"])})
+
+
+def wait_relay_ready(r, label="Send my answers"):
+    r.page.wait_for_function("label => { const b = document.getElementById('btn-send'); return !!b && !b.disabled && b.textContent === label; }",
+                             arg=label, timeout=30000)
+
+
+def panel_title(r):
+    r.page.wait_for_selector("#sent:not([hidden])", timeout=20000)
+    return r.page.inner_text("#sent-title")
+
+
+def only_relay_traffic(r):
+    return [u for u in r.external if not (u.startswith(RELAY["origin"]) or u.startswith(RELAY["echo"]))]
+
+
+def attachment_to_file(mail, folder):
+    att = mail["attachments"][0]
+    path = os.path.join(folder, att["name"])
+    import base64
+    open(path, "wb").write(base64.b64decode(att["base64"]))
+    return att["name"], path
+
+
+@test
+def t_relay_happy_path(env):
+    relay_reset()
+    r = relay_run(env)
+    downloads = []
+    r.page.on("download", lambda d: downloads.append(d.suggested_filename))
+    relay_walk(r)
+    check(r.page.inner_text("#btn-send") in ("Preparing your PDF...", "Send my answers"), "the main button is 'Send my answers'")
+    check(r.page.locator("#btn-email").count() == 1, "the email route is still offered next to it")
+    check("Google" in r.page.inner_text("#step-review") and "encrypted" in r.page.inner_text("#step-review"), "the review step says where the answers go")
+    wait_relay_ready(r)
+    rep = r.report()
+    check("Response ID: dhar-" in rep, "the report carries a response ID")
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "the confirmation says the answers were sent")
+    check(r.page.inner_text("#btn-send") == "Sent" and r.page.is_disabled("#btn-send") and r.page.is_disabled("#btn-email"), "both send buttons are disabled afterwards")
+
+    outbox = relay_call("/__outbox")
+    check(len(outbox) == 1, f"exactly one email was produced ({len(outbox)})")
+    m = outbox[0]
+    rid = re.search(r"Response ID: (dhar-[0-9]{8}-[0-9]{6}-[a-z0-9]{6})", rep).group(1)
+    check(m["to"] == "owner@example.com" and m["name"] == "Shaping Dhar survey", "sent to the script owner under the survey's name")
+    check(m.get("replyTo") == "ada.obi@example.com", f"Reply-To is the respondent's address, taken from the contact answer: {m.get('replyTo')!r}")
+    check(m["subject"] == "Shaping Dhar survey response: Student, Developer or engineer [" + rid + "]", f"subject: {m['subject']!r}")
+    check(m["body"].startswith(rep + "\n") and "Response ID: " + rid in m["body"].split("== END OF RESPONSE ==")[1], "the body is exactly the report shown on the review step, plus the relay's trailer")
+    check("PDF attached: yes" in m["body"] and "Reply-To: ada.obi@example.com" in m["body"], "the trailer says the PDF is attached and who the Reply-To is")
+    check(len(m["attachments"]) == 1 and m["attachments"][0]["type"] == "application/pdf", "one PDF is attached")
+    with tempfile.TemporaryDirectory() as folder:
+        name, path = attachment_to_file(m, folder)
+        verify_pdf(r, path, name, "PDF attached to the relayed email")
+        with r.page.expect_download() as dl:
+            r.page.click("#sent button:has-text('Download my copy (PDF)')")
+        mine = os.path.join(folder, "mine.pdf")
+        dl.value.save_as(mine)
+        check(open(mine, "rb").read() == open(path, "rb").read(), "the respondent's own copy is byte-for-byte the PDF that was emailed")
+    sheets = relay_call("/__sheets")
+    head, rows = sheets["Responses"][0], sheets["Responses"][1:]
+    check(len(rows) == 1, f"the response is also in the log sheet ({len(rows)} row)")
+    row = dict(zip(head, rows[0]))
+    check(row["response_id"] == rid and row["status"] == "emailed" and row["reply_to"] == "ada.obi@example.com", f"the log row has the same reference, status and reply-to: {row['response_id']} {row['status']} {row['reply_to']}")
+    check(row["response_text"] == rep, "the log row holds the whole response text, the same as the email")
+    qs = survey_questions(r)
+    logged_q = {c: t for c, _v, t in sheets["Questions"][1:]}
+    codes = [c for c, _ in report_blocks(rep)]
+    check(set(codes) <= set(logged_q) and all(logged_q[c].startswith(qs[c]["text"]) for c in codes), "the Questions sheet holds the full wording of every question that was answered (the line may carry the hint after it)")
+    check(r.mailto() is None, "no email app was opened")
+    check(len(downloads) == 1, f"nothing was downloaded until the respondent asked for their copy ({downloads})")
+    check(rid in r.page.inner_text("#sent"), "the confirmation shows the reference number")
+    check("removed from this device" in r.page.inner_text("#sent"), "the confirmation says the draft was removed")
+    check(r.page.evaluate("Object.keys(localStorage).filter(k => k.indexOf('dhar-survey') === 0)") == [], "the saved draft is gone from this device")
+
+    traffic = [l for l in relay_call("/__log")]
+    posts = [l for l in traffic if l["method"] == "POST"]
+    check(len(posts) == 1 and posts[0]["type"].lower().startswith("text/plain"), f"one POST, as text/plain: {posts}")
+    check([l for l in traffic if l["method"] == "OPTIONS"] == [], "no CORS pre-flight was needed")
+    check(not any(l["cookie"] for l in traffic), "no cookies were sent to the relay")
+    check(only_relay_traffic(r) == [], f"the page talked to nobody but the relay: {only_relay_traffic(r)}")
+    check(r.errors == [], f"no console errors: {r.errors}")
+    r.close()
+
+
+@test
+def t_relay_anonymous_has_no_reply_to(env):
+    relay_reset()
+    r = relay_run(env)
+    relay_walk(r, contact=None)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "an anonymous response is sent too")
+    m = relay_call("/__outbox")[0]
+    check("replyTo" not in m, f"no Reply-To when the respondent gave no address: {m.get('replyTo')!r}")
+    check("Reply-To: none given" in m["body"], "the trailer says so")
+    check("ada.obi" not in json.dumps(m), "no address appears anywhere in the email")
+    r.close()
+
+
+@test
+def t_relay_a_phone_number_is_not_a_reply_to(env):
+    relay_reset()
+    r = relay_run(env)
+    relay_walk(r, contact="WhatsApp +234 801 234 5678")
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    panel_title(r)
+    m = relay_call("/__outbox")[0]
+    check("replyTo" not in m and "+234 801 234 5678" in m["body"], "a WhatsApp number is reported in the text but is not used as a Reply-To")
+    r.close()
+
+
+@test
+def t_relay_retries_after_a_dropped_connection(env):
+    relay_reset()
+    relay_mode(dropFirst=True)
+    r = relay_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "the page retried and the response arrived")
+    posts = [l for l in relay_call("/__log") if l["method"] == "POST"]
+    check(len(posts) == 2, f"two attempts were made ({len(posts)})")
+    check(len(relay_call("/__outbox")) == 1, "one email only")
+    check(len(relay_call("/__sheets")["Responses"]) == 2, "one row in the log")
+    r.close()
+
+
+@test
+def t_relay_unconfirmed_delivery_offers_email_without_double_sending(env):
+    """The relay processes the response but the page may not read the answer (here: no CORS header on it).
+    The page cannot know, so it must say so, offer the email route, and never mail the response twice."""
+    relay_reset()
+    relay_mode(noCors=True)
+    r = relay_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "We could not confirm that your answers arrived", "the page says it could not confirm delivery")
+    check(len(relay_call("/__outbox")) == 1, "the retry did not produce a second email (the relay ignored the repeated ID)")
+    check(len(relay_call("/__sheets")["Responses"]) == 2, "nor a second row in the log")
+    rid = re.search(r"Response ID: (dhar-\S+)", r.report()).group(1)
+    check(rid in r.page.inner_text("#sent"), "the panel quotes the reference number")
+    link = r.page.locator("#sent a:has-text('Open my email app')")
+    check(link.count() == 1 and link.get_attribute("href").startswith("mailto:garbaabdullahi344@gmail.com?subject="), "the panel offers a ready-addressed email")
+    body = urllib.parse.parse_qs(urllib.parse.urlparse(link.get_attribute("href")).query)["body"][0].replace("\r\n", "\n")
+    check("Response ID: " + rid in body and body.rstrip().endswith("== END OF RESPONSE =="), "that email carries the same reference and the full response")
+    check(r.page.locator("#sent button:has-text('Try sending again')").count() == 1, "a retry button is offered")
+    check(r.page.locator("#sent a[target=_blank]").count() == 3, "the three webmail links are offered")
+    check(r.page.inner_text("#btn-send") == "Send my answers" and r.page.is_enabled("#btn-send"), "the main button is usable again")
+    downloads = []
+    r.page.on("download", lambda d: downloads.append(d.suggested_filename))
+    link.click()
+    r.page.wait_for_timeout(600)
+    check(r.mailto() is not None and len(downloads) == 1, "pressing it opens the email app and saves the PDF copy")
+    check(r.page.evaluate("Object.keys(localStorage).filter(k => k.indexOf('dhar-survey') === 0)") != [], "the draft was NOT cleared, because delivery was not confirmed")
+    r.close()
+
+
+@test
+def t_relay_unreachable_server(env):
+    relay_reset()
+    r = relay_run(env, url="http://127.0.0.1:9/macros/s/NOBODY/exec")     # nothing listens on port 9
+    relay_walk(r)
+    wait_relay_ready(r)
+    t0 = time.time()
+    r.page.click("#btn-send")
+    check(panel_title(r) == "We could not confirm that your answers arrived", "no connection at all leads to the email route")
+    check(time.time() - t0 < 12, f"it gives up quickly ({time.time() - t0:.1f} s)")
+    check(r.page.locator("#sent a:has-text('Open my email app')").count() == 1, "the email route is offered")
+    r.close()
+
+
+@test
+def t_relay_timeout(env):
+    relay_reset()
+    relay_mode(delayMs=1500)
+    r = relay_run(env, timeout_ms=300)
+    relay_walk(r)
+    wait_relay_ready(r)
+    t0 = time.time()
+    r.page.click("#btn-send")
+    check(panel_title(r) == "We could not confirm that your answers arrived", "a relay that answers too slowly leads to the email route")
+    check(time.time() - t0 < 8, f"after about two short attempts ({time.time() - t0:.1f} s)")
+    r.page.wait_for_timeout(4500)       # let the slow server finish
+    check(len(relay_call("/__outbox")) == 1, "the slow response was emailed once, not twice")
+    check(len(relay_call("/__sheets")["Responses"]) == 2, "and logged once")
+    r.close()
+
+
+@test
+def t_relay_server_errors_can_be_retried(env):
+    relay_reset()
+    relay_mode(sendThrows=True, logToSheet=False)      # with the log on, a mail failure is absorbed (next test)
+    r = relay_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers have not been sent yet", "a relay error is reported")
+    check("busy or at its limit" in r.page.inner_text("#sent"), "in plain words")
+    check(relay_call("/__outbox") == [], "nothing was sent")
+    check(r.page.locator("#sent a:has-text('Open my email app')").count() == 1, "the email route is offered")
+    relay_mode(sendThrows=False)
+    r.page.click("#sent button:has-text('Try sending again')")
+    r.page.wait_for_function("document.getElementById('sent-title') && document.getElementById('sent-title').textContent === 'Your answers were sent'", timeout=20000)
+    check(len(relay_call("/__outbox")) == 1, "trying again worked, and sent exactly one email")
+    r.close()
+
+
+@test
+def t_relay_daily_quota_still_saves_the_response(env):
+    relay_reset()
+    relay_mode(quota=2)
+    r = relay_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "an exhausted daily mail quota does not stop the respondent")
+    check("received and saved" in r.page.inner_text("#sent"), "the panel says the answers were saved (not emailed): " + r.page.inner_text("#sent")[:160])
+    check(relay_call("/__outbox") == [], "no email was attempted")
+    rows = relay_call("/__sheets")["Responses"]
+    check(len(rows) == 2 and rows[1][rows[0].index("status")] == "stored", "the response is in the log, marked stored")
+    r.close()
+
+
+@test
+def t_relay_quota_with_the_log_off_leads_to_email(env):
+    relay_reset()
+    relay_mode(quota=2, logToSheet=False)
+    r = relay_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers have not been sent yet" and "busy or at its limit" in r.page.inner_text("#sent"), "with no log to fall back on, an exhausted quota is reported as busy")
+    check(relay_call("/__outbox") == [] and r.page.locator("#sent a:has-text('Open my email app')").count() == 1, "nothing was sent and the email route is there")
+    r.close()
+
+
+@test
+def t_relay_email_failure_is_absorbed_by_the_log(env):
+    relay_reset()
+    relay_mode(sendThrows=True)
+    r = relay_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent" and "received and saved" in r.page.inner_text("#sent"), "a failing email is not the respondent's problem when the log has the response")
+    rows = relay_call("/__sheets")["Responses"]
+    check(len(rows) == 2 and rows[1][rows[0].index("status")] == "stored", "the log has it, marked stored")
+    check(relay_call("/__outbox") == [], "no email went")
+    r.close()
+
+
+@test
+def t_relay_log_failure_is_absorbed_by_the_email(env):
+    relay_reset()
+    relay_mode(sheetThrows=True)
+    r = relay_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent" and "PDF copy were sent" in r.page.inner_text("#sent"), "a failing log is not the respondent's problem when the email went")
+    check(len(relay_call("/__outbox")) == 1 and relay_call("/__sheets") == {}, "the email went; nothing in the log")
+    r.close()
+
+
+@test
+def t_relay_log_agrees_with_the_parser(env):
+    """The sheet the relay writes and the CSV the parser makes from the emails must say the same."""
+    relay_reset()
+    for n, (roles, kwargs) in enumerate([(("student", "dev"), {}), (tuple(ALL_ROLES), {"long_text": 380, "only_required": False})]):
+        r = relay_run(env)
+        r.open()
+        r.pick_roles(list(roles))
+        areas = ["software", "web", "ai", "security"] if n else ["software"]
+
+        def on_step(t, r=r):
+            if t == "Stay in touch":
+                r.page.check("#in-C1-yes")
+                r.page.fill("#in-C2", "=cmd|' /C calc'!A0 ada@example.com")     # a hostile contact answer
+        r.walk(on_step=on_step, overrides={"about": about_step(areas=areas)}, **kwargs)
+        wait_relay_ready(r)
+        r.page.click("#btn-send")
+        panel_title(r)
+        r.close()
+    out = relay_call("/__outbox")
+    check(len(out) == 2, f"two responses arrived ({len(out)})")
+    sheets = relay_call("/__sheets")["Responses"]
+    head, rows = sheets[0], sheets[1:]
+    check(len(rows) == 2, f"two rows in the log ({len(rows)})")
+    parser = os.path.join(ROOT, "tools", "parse_responses.py")
+    with tempfile.TemporaryDirectory() as d:
+        src = os.path.join(d, "mail.txt")
+        open(src, "w", encoding="utf-8").write("\n\n".join(m["body"] for m in out))
+        csv_path = os.path.join(d, "out.csv")
+        res = subprocess.run([sys.executable, "-I", parser, src, "-o", csv_path], capture_output=True, text=True)
+        check(res.returncode == 0, f"the parser reads the relayed emails: {res.stderr[-200:]}")
+        import csv
+        parsed = {rw["response_id"]: rw for rw in csv.DictReader(open(csv_path, encoding="utf-8"))}
+    check(len(parsed) == 2, "the parser finds both responses")
+    compared = mismatched = 0
+    for raw in rows:
+        row = dict(zip(head, raw))
+        want = parsed[row["response_id"]]
+        for code in head[10:]:
+            if want.get(code, "") == "" and raw[head.index(code)] == "":
+                continue
+            got = str(raw[head.index(code)])
+            if got.startswith("'") and not want.get(code, "").startswith("'"):
+                got = got[1:]
+            compared += 1
+            if got != want.get(code, ""):
+                mismatched += 1
+                print(f"    {code}: log={got[:60]!r} parser={want.get(code, '')[:60]!r}")
+        check(row["survey_version"] == want["survey_version"] and row["roles"] == want["roles"] and row["pdf_copy"] == want["pdf_copy"], "header fields agree")
+    check(compared > 60 and mismatched == 0, f"{compared} answers compared, {mismatched} differ")
+    hostile = [dict(zip(head, rw))["C2"] for rw in rows]
+    check(all(h.startswith("'=cmd") for h in hostile), f"the hostile contact answer is stored as text, not as a formula: {hostile}")
+    check(all(dict(zip(head, rw))["reply_to"] == "ada@example.com" for rw in rows), "the Reply-To is the address found inside the contact answer")
+
+
+@test
+def t_relay_refusal_goes_to_email_without_retry(env):
+    relay_reset()
+    r = relay_run(env, token="not-the-token")
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers have not been sent yet" and "(forbidden)" in r.page.inner_text("#sent"), "a refused token is reported with its code")
+    check(r.page.locator("#sent button:has-text('Try sending again')").count() == 0, "no pointless retry button")
+    check(r.page.locator("#sent a:has-text('Open my email app')").count() == 1, "the email route is offered")
+    check(relay_call("/__outbox") == [], "nothing was sent")
+    r.close()
+
+
+@test
+def t_relay_reply_that_is_not_json(env):
+    relay_reset()
+    relay_mode(html=True)
+    r = relay_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers have not been sent yet" and "(bad-response)" in r.page.inner_text("#sent"), "a sign-in page instead of JSON is reported, not mistaken for success")
+    r.close()
+
+
+@test
+def t_relay_without_a_pdf_still_sends(env):
+    relay_reset()
+    r = relay_run(env)
+    r.page.route("**/assets/pdf-fonts.js", lambda route: route.abort())
+    relay_walk(r)
+    r.page.wait_for_function("document.getElementById('pdf-note').textContent.indexOf('could not be made') !== -1", timeout=30000)
+    check(r.page.inner_text("#btn-send") == "Send my answers" and r.page.is_enabled("#btn-send"), "the send button is usable without a PDF")
+    check("without it" in r.page.inner_text("#pdf-note"), "the note says the answers go without a PDF")
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "sent")
+    m = relay_call("/__outbox")[0]
+    check("attachments" not in m or m["attachments"] == [], "no attachment")
+    check("PDF" not in r.page.inner_text("#sent").replace("PDF copy", ""), "the confirmation does not claim a PDF")
+    check("PDF copy:" not in m["body"], "the text does not mention a PDF copy")
+    r.close()
+
+
+@test
+def t_relay_email_route_by_choice(env):
+    relay_reset()
+    r = relay_run(env)
+    downloads = []
+    r.page.on("download", lambda d: downloads.append(d.suggested_filename))
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-email")
+    r.page.wait_for_selector("#sent:not([hidden])")
+    check(r.page.inner_text("#sent-title") == "Your email is ready" and r.mailto() is not None, "choosing the email button opens the email draft")
+    check(len(downloads) == 1, "the PDF copy is saved for attaching")
+    check([l for l in relay_call("/__log") if l["method"] == "POST"] == [] and relay_call("/__outbox") == [], "the relay was never contacted")
+    r.close()
+
+
+@test
+def t_relay_off_by_default(env):
+    r = Run(env.browser, env.base).open()
+    check("emailed to Abdullahi" in r.page.inner_text("#privacy") or "emailed to Abdullahi" in r.page.inner_text(".privacy"), "without a relay the start page keeps its email-route wording")
+    r.pick_roles(["student"])
+    r.walk(overrides={"about": about_step()})
+    check(r.page.locator("#btn-email").count() == 0, "no second 'email instead' button")
+    check(r.page.evaluate("window.DHAR_CONFIG.relayUrl") == "", "relayUrl is empty in the shipped config until the relay is set up")
+    r.close()
+
+
+@test
+def t_relay_wording_and_layout(env):
+    relay_reset()
+    r = relay_run(env, permissions=False)
+    r.open()
+    privacy = r.page.inner_text(".privacy")
+    check("Google" in privacy and "encrypted" in privacy and "Send" in privacy, "the start page says plainly that answers pass through a service on Google's servers")
+    check("emailed to Abdullahi" not in privacy and "sent from your own email app" not in privacy, "and no longer claims they only leave through the respondent's email app")
+    check("Answers are sent only when you press Send" in r.page.inner_text(".foot"), "the footer matches")
+    r.close()
+    axe_src = open(ARGS.axe, encoding="utf-8").read() if ARGS.axe and os.path.exists(ARGS.axe) else None
+    for w, h, scheme in [(375, 780, "light"), (1280, 900, "light"), (375, 780, "dark")]:
+        relay_reset()
+        r = relay_run(env, viewport={"width": w, "height": h}, scheme=scheme, permissions=False)
+        relay_walk(r)
+        wait_relay_ready(r)
+        over = []
+        if r.page.evaluate("document.documentElement.scrollWidth") > w:
+            over.append("review")
+        if axe_src and scheme == "dark":
+            r.page.add_script_tag(content=axe_src)
+        r.shot(f"relay-{w}-{scheme}-review")
+        r.page.click("#btn-send")
+        panel_title(r)
+        if r.page.evaluate("document.documentElement.scrollWidth") > w:
+            over.append("sent")
+        r.shot(f"relay-{w}-{scheme}-sent")
+        check(not over, f"{w}px {scheme}: no sideways scrolling ({over})")
+        if axe_src and scheme == "dark":
+            res = r.page.evaluate("""async () => (await axe.run(document, {resultTypes: ['violations']})).violations.map(v => v.id + ': ' + v.nodes.slice(0, 2).map(n => n.target.join(' ')).join(' | '))""")
+            check(res == [], f"axe (dark) on the relay confirmation: {res}")
+        r.close()
+    # the fallback panel too
+    relay_reset()
+    relay_mode(noCors=True)
+    r = relay_run(env, viewport={"width": 375, "height": 780}, permissions=False)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    panel_title(r)
+    r.shot("relay-375-fallback")
+    check(r.page.evaluate("document.documentElement.scrollWidth") <= 375, "375px: the fallback panel does not scroll sideways")
+    if axe_src:
+        r.page.add_script_tag(content=axe_src)
+        res = r.page.evaluate("""async () => (await axe.run(document, {resultTypes: ['violations']})).violations.map(v => v.id + ': ' + v.nodes.slice(0, 2).map(n => n.target.join(' ')).join(' | '))""")
+        check(res == [], f"axe on the fallback panel: {res}")
+    r.close()
+
+
+@test
+def t_relay_check_page(env):
+    relay_reset()
+    r = relay_run(env, permissions=False)
+    r.page.goto(env.base + "/relay-check.html")
+    r.page.wait_for_selector("#btn-ping")
+    check(RELAY["url"] in r.page.inner_text("#config-status"), "the check page shows the configured relay address")
+    r.page.click("#btn-ping")
+    r.page.wait_for_function("document.getElementById('ping-verdict').classList.contains('good') || document.getElementById('ping-verdict').classList.contains('bad')", timeout=15000)
+    check("relay is alive" in r.page.inner_text("#ping-verdict"), f"ping succeeds: {r.page.inner_text('#ping-verdict')!r}")
+    r.page.click("#btn-test")
+    r.page.wait_for_function("document.getElementById('test-verdict').classList.contains('good') || document.getElementById('test-verdict').classList.contains('bad')", timeout=15000)
+    check(r.page.inner_text("#test-verdict").startswith("Accepted in"), f"the test response is accepted: {r.page.inner_text('#test-verdict')!r}")
+    out = relay_call("/__outbox")
+    check(len(out) == 1 and out[0]["subject"].startswith("[TEST] Shaping Dhar survey response") and len(out[0]["attachments"]) == 1, "a [TEST] email with a PDF reached the outbox")
+    # a relay the browser cannot read
+    relay_mode(noCors=True)
+    r.page.click("#btn-ping")
+    r.page.wait_for_function("document.getElementById('ping-verdict').textContent.indexOf('could not read') !== -1", timeout=15000)
+    check("Who has access" in r.page.inner_text("#ping-verdict") or "Anyone" in r.page.inner_text("#ping-verdict"), "an unreadable relay is explained, with the likely causes")
+    r.close()
+    r = Run(env.browser, env.base, permissions=False)
+    r.page.goto(env.base + "/relay-check.html")
+    r.page.click("#btn-test")
+    check("relayUrl is empty" in r.page.inner_text("#test-verdict"), "with no relayUrl the page says what to do")
+    r.close()
+
+
 class Env:
     pass
 
@@ -1067,12 +1638,19 @@ def main():
     server = start_server()
     env = Env()
     env.base = f"http://127.0.0.1:{server.server_address[1]}"
+    relay_proc = start_relay()
+    if relay_proc is None:
+        SKIPPED.append("node (the relay tests)")
     with sync_playwright() as p:
         kwargs = {}
         if ARGS.chromium:
             kwargs["executable_path"] = ARGS.chromium
         env.browser = p.chromium.launch(**kwargs)
         for fn in TESTS:
+            if relay_proc is None and fn.__name__.startswith("t_relay_"):
+                continue
+            if ARGS.only and ARGS.only not in fn.__name__:
+                continue
             CURRENT["name"] = fn.__name__
             print(f"- {fn.__name__}")
             try:
@@ -1083,6 +1661,8 @@ def main():
                 traceback.print_exc()
         env.browser.close()
     server.shutdown()
+    if relay_proc is not None:
+        relay_proc.terminate()
 
     failed = [r for r in RESULTS if not r[1]]
     if SKIPPED:

@@ -56,6 +56,13 @@
   /* The PDF copy can be switched off in config.js (pdfEnabled: false). */
   var PDF_ON = CONFIG.pdfEnabled !== false;
 
+  /* Direct delivery through the relay (relay/Code.gs). Off unless config.js gives an https URL.
+     RELAY_PROTOCOL must equal PROTOCOL in relay/Code.gs. */
+  var RELAY_PROTOCOL = 1;
+  /* https only, except a web server on this computer (http://localhost, used by the tests). */
+  var RELAY_URL = typeof CONFIG.relayUrl === 'string' && /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)[:\/])/i.test(CONFIG.relayUrl.trim()) ? CONFIG.relayUrl.trim() : '';
+  var RELAY_ON = RELAY_URL !== '' && typeof window.fetch === 'function' && typeof Promise !== 'undefined';
+
   /* ======================================================================= *
    * 2. Small helpers
    * ======================================================================= */
@@ -102,6 +109,17 @@
   }
 
   function pdfFileName(d) { return 'shaping-dhar-response-' + fileStamp(d) + '.pdf'; }
+
+  /* A reference for one response: "dhar-20261019-154500-k3x9ab". It is printed in the report, so a
+     response that arrives twice (relay and email) can be recognised, and the relay ignores a
+     repeated one. The shape must match ID_RE in relay/Code.gs. */
+  function responseId(d) {
+    var chars = 'abcdefghijklmnopqrstuvwxyz0123456789', out = '', buf = null, i;
+    try { buf = new Uint8Array(6); (window.crypto || window.msCrypto).getRandomValues(buf); } catch (e) { buf = null; }
+    for (i = 0; i < 6; i++) { out += chars.charAt((buf ? buf[i] : Math.floor(Math.random() * 256)) % 36); }
+    return 'dhar-' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' +
+      pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds()) + '-' + out;
+  }
 
   function recipient() { return CONFIG.recipientUser + '@' + CONFIG.recipientDomain; }
 
@@ -735,6 +753,7 @@
       'Question wording: ' + (compact ? 'shortened' : 'full')
     ];
     if (pdfName) { head.push('PDF copy: ' + pdfName); }
+    if (dom.id) { head.push('Response ID: ' + dom.id); }
     head.push('');
     var text = head.concat(body, ['== END OF RESPONSE ==']).join('\n');
     return { text: text, answered: answered, shown: shown, date: now };
@@ -783,6 +802,22 @@
       footer: SURVEY.title + ' survey, version ' + SURVEY.version + ', ' + stamp(when).replace(/ \(.*$/, ''),
       created: when
     };
+  }
+
+  /* The first email address found in a visible, answered question marked `replyTo: true` in
+     questions.js (the contact question). The relay makes it the Reply-To of the message.
+     Returns '' when the respondent gave none, for example because they chose to stay anonymous. */
+  function respondentEmail() {
+    var found = '';
+    allQuestions().forEach(function (q) {
+      if (found || !q.replyTo) { return; }
+      var sec = null;
+      SURVEY.sections.forEach(function (s) { if (s.questions.indexOf(q) !== -1) { sec = s; } });
+      if (!sec || !sectionVisible(sec) || visibleQuestions(sec).indexOf(q) === -1 || !isAnswered(q)) { return; }
+      var m = /[^\s@<>",;:()\[\]\\]+@[^\s@<>",;:()\[\]\\]+\.[A-Za-z]{2,}/.exec(String(state.answers[q.code]));
+      if (m && m[0].length <= 254) { found = m[0]; }
+    });
+    return found;
   }
 
   function subjectLine() {
@@ -894,19 +929,31 @@
       class: 'field report', readonly: true, rows: '14', id: 'report-text', spellcheck: 'false',
       'aria-label': 'Your answers, exactly as they will be emailed'
     });
-    dom.sendBtn = h('button', { type: 'button', class: 'btn primary big', id: 'btn-send', text: PDF_ON ? 'Download PDF and email it' : 'Send by email', onclick: onSend });
+    dom.sendBtn = h('button', { type: 'button', class: 'btn primary big', id: 'btn-send', text: RELAY_ON ? 'Send my answers' : (PDF_ON ? 'Download PDF and email it' : 'Send by email'), onclick: RELAY_ON ? onRelaySend : onSend });
+    dom.emailBtn = RELAY_ON ? h('button', { type: 'button', class: 'btn ghost', id: 'btn-email', text: 'Send it from my own email app instead', onclick: onSend }) : null;
     dom.pdfNote = h('p', { class: 'send-note', id: 'pdf-note', role: 'status', hidden: !PDF_ON });
+    dom.relayNote = RELAY_ON ? h('p', { class: 'send-note', id: 'relay-note', role: 'status' }) : null;
     dom.sent = h('div', { class: 'sent', id: 'sent', hidden: true, tabindex: '-1', role: 'region', 'aria-labelledby': 'sent-title' });
 
-    var el = h('section', { class: 'step', id: 'step-review', hidden: true, 'aria-labelledby': headingId, 'data-step': 'review' },
-      h('header', { class: 'step-head' }, count, heading,
-        h('p', { class: 'step-intro', text: PDF_ON ?
-          'Sending saves a PDF copy of your questions and answers on this device and opens your email app with a message already written and addressed to the Dhar project. Attach the PDF, then press Send there. Nothing is sent until you press Send.' :
-          'Sending opens your email app with your answers already written and addressed to the Dhar project. Nothing is sent until you press Send there.' })),
-      dom.summary,
-      h('details', { class: 'preview' }, h('summary', { text: 'Read exactly what will be emailed' }), dom.reportBox),
+    var intro = RELAY_ON ?
+      'Pressing "Send my answers" sends your answers and a PDF copy of your questions and answers to the Dhar project over an encrypted connection. You do not need to open your email app. Nothing is sent until you press the button.' :
+      (PDF_ON ?
+        'Sending saves a PDF copy of your questions and answers on this device and opens your email app with a message already written and addressed to the Dhar project. Attach the PDF, then press Send there. Nothing is sent until you press Send.' :
+        'Sending opens your email app with your answers already written and addressed to the Dhar project. Nothing is sent until you press Send there.');
+    var sendRow = RELAY_ON ?
       h('div', { class: 'send-row' }, dom.sendBtn, dom.pdfNote,
-        h('p', { class: 'send-note', text: 'Your email app opens with the message ready. If it does not, the options appear below.' })),
+        h('p', { class: 'send-note', text: 'The message passes through a small service on Google\'s servers that the project runs. It saves your answers in a private spreadsheet and emails them to Abdullahi Baba Garba. If you gave an email address, he can reply to it.' }),
+        dom.relayNote,
+        h('div', { class: 'send-alt' },
+          h('p', { class: 'send-note', text: 'Prefer to send it yourself?' }), dom.emailBtn)) :
+      h('div', { class: 'send-row' }, dom.sendBtn, dom.pdfNote,
+        h('p', { class: 'send-note', text: 'Your email app opens with the message ready. If it does not, the options appear below.' }));
+
+    var el = h('section', { class: 'step', id: 'step-review', hidden: true, 'aria-labelledby': headingId, 'data-step': 'review' },
+      h('header', { class: 'step-head' }, count, heading, h('p', { class: 'step-intro', text: intro })),
+      dom.summary,
+      h('details', { class: 'preview' }, h('summary', { text: RELAY_ON ? 'Read exactly what will be sent' : 'Read exactly what will be emailed' }), dom.reportBox),
+      sendRow,
       dom.sent);
     dom.step.review = { el: el, count: count, heading: heading, sec: REVIEW };
     return el;
@@ -942,27 +989,37 @@
     if (PDF_ON && !pdfCode && typeof Promise !== 'undefined') { loadPdfCode().catch(function () { /* reported on the review step */ }); }
   }
 
+  /* Labels and enabled state of the send buttons. Two modes:
+       relay on   "Send my answers" (relay) plus "Send it from my own email app instead"
+       relay off  one button that opens the email draft */
   function setSendState() {
     var p = dom.pdf;
-    if (!PDF_ON || !p) {
-      dom.sendBtn.disabled = false;
-      dom.sendBtn.textContent = 'Send by email';
-      return;
-    }
+    var busy = !!p && p.status === 'preparing';
+    var label;
+    if (dom.delivered) { label = 'Sent'; }
+    else if (dom.sending) { label = 'Sending...'; }
+    else if (busy) { label = 'Preparing your PDF...'; }
+    else if (RELAY_ON) { label = 'Send my answers'; }
+    else if (PDF_ON && p && p.status === 'ready') { label = 'Download PDF and email it'; }
+    else { label = 'Send by email'; }
+    dom.sendBtn.textContent = label;
+    dom.sendBtn.disabled = !!(dom.delivered || dom.sending || busy);
+    dom.sendBtn.setAttribute('aria-busy', dom.sending ? 'true' : 'false');
+    if (dom.emailBtn) { dom.emailBtn.disabled = !!(dom.delivered || dom.sending || busy); }
+
+    if (!PDF_ON || !p) { return; }
     if (p.status === 'preparing') {
-      dom.sendBtn.disabled = true;
-      dom.sendBtn.textContent = 'Preparing your PDF...';
       dom.pdfNote.textContent = 'Making the PDF copy of your answers on this device.';
     } else if (p.status === 'ready') {
-      dom.sendBtn.disabled = false;
-      dom.sendBtn.textContent = 'Download PDF and email it';
       dom.pdfNote.textContent = 'PDF ready: ' + p.name + ' (' + Math.max(1, Math.round(p.size / 1024)) + ' KB).';
     } else {
-      dom.sendBtn.disabled = false;
-      dom.sendBtn.textContent = 'Send by email';
-      dom.pdfNote.textContent = 'The PDF could not be made on this device. Your email will carry your answers as text instead.';
+      dom.pdfNote.textContent = RELAY_ON ?
+        'The PDF could not be made on this device. Your answers will be sent as text without it.' :
+        'The PDF could not be made on this device. Your email will carry your answers as text instead.';
     }
   }
+
+  function setRelayNote(text) { if (dom.relayNote) { dom.relayNote.textContent = text || ''; } }
 
   /* The preview shows exactly what will be emailed, including whether it names a PDF copy. */
   function refreshPreview() {
@@ -993,6 +1050,7 @@
       try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) { file = null; }
       mine.status = 'ready';
       mine.blob = blob;
+      mine.bytes = bytes;
       mine.file = file;
       mine.size = bytes.length;
       setSendState();
@@ -1001,6 +1059,10 @@
 
   function buildReview() {
     dom.when = new Date();
+    dom.id = responseId(dom.when);
+    dom.delivered = false;
+    dom.sending = false;
+    setRelayNote('');
     var report = buildReport(false, dom.when, PDF_ON ? pdfFileName(dom.when) : null);
     dom.summary.textContent = 'You answered ' + report.answered + ' questions. Roles: ' + (roleShortNames().join(', ') || 'none') + '.';
     dom.reportBox.value = report.text;
@@ -1031,15 +1093,21 @@
     document.body.removeChild(a);
   }
 
-  function onSend() {
+  /* Safety net before any send: if a required question still has a problem, go back to it.
+     Returns true when everything is fine. */
+  function readyToSend() {
     var invalid = firstInvalidStep();
-    if (invalid) {
-      go(invalid.step.id, { quiet: true });
-      validateStep(invalid.step);
-      setNavError(invalid.questions.length);
-      focusQuestion(invalid.questions[0]);
-      return;
-    }
+    if (!invalid) { return true; }
+    go(invalid.step.id, { quiet: true });
+    validateStep(invalid.step);
+    setNavError(invalid.questions.length);
+    focusQuestion(invalid.questions[0]);
+    return false;
+  }
+
+  /* The email-draft route: copy the text, save the PDF, open the respondent's email app. */
+  function onSend() {
+    if (!readyToSend()) { return; }
     var when = dom.when || new Date();
     var pdf = PDF_ON && dom.pdf && dom.pdf.status === 'ready' ? dom.pdf : null;
     var report = buildReport(false, when, pdf ? pdf.name : null);   /* complete wording: clipboard, download, preview */
@@ -1081,6 +1149,141 @@
     });
   }
 
+  /* ---- direct delivery through the relay (relay/Code.gs) ------------------------------------ */
+
+  function bytesToBase64(bytes) {
+    var step = 0x8000, parts = [], i;
+    for (i = 0; i < bytes.length; i += step) {
+      parts.push(String.fromCharCode.apply(null, bytes.subarray ? bytes.subarray(i, i + step) : bytes.slice(i, i + step)));
+    }
+    return window.btoa(parts.join(''));
+  }
+
+  /* The request body. It is JSON sent as text/plain: that is a "simple" request, so the browser
+     does not need a CORS pre-flight, which Apps Script web apps do not answer. */
+  function relayBody(report, subject, pdf) {
+    try {
+      return JSON.stringify({
+        v: RELAY_PROTOCOL,
+        token: CONFIG.relayToken || '',
+        id: dom.id,
+        survey: SURVEY.version,
+        subject: subject,
+        text: report.text,
+        replyTo: respondentEmail(),
+        pdf: pdf && pdf.bytes ? { name: pdf.name, data: bytesToBase64(pdf.bytes) } : null
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* One attempt. Always resolves, never rejects, to one of:
+       { kind: 'ok',          data }   the relay accepted it (data.ok === true)
+       { kind: 'rejected',    data }   the relay answered, but said no (data.code says why)
+       { kind: 'unreachable', why }    no usable answer: offline, timed out, blocked, or a reply this
+                                       page is not allowed to read. The response may or may not have
+                                       arrived, which is why the caller retries and then falls back. */
+  function postToRelay(body) {
+    var controller = typeof window.AbortController === 'function' ? new window.AbortController() : null;
+    var timer = null;
+    var timeout = new Promise(function (resolve) {
+      timer = window.setTimeout(function () {
+        if (controller) { controller.abort(); }
+        resolve({ kind: 'unreachable', why: 'timeout' });
+      }, CONFIG.relayTimeoutMs || 30000);
+    });
+    var attempt = window.fetch(RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: body,
+      redirect: 'follow',
+      credentials: 'omit',
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+      signal: controller ? controller.signal : undefined
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var data = null;
+        try { data = JSON.parse(text); } catch (e) { data = null; }
+        if (data && typeof data === 'object' && typeof data.ok === 'boolean') {
+          return { kind: data.ok ? 'ok' : 'rejected', data: data };
+        }
+        return { kind: 'rejected', data: { ok: false, code: 'bad-response', message: 'Unexpected reply (HTTP ' + res.status + ').' } };
+      });
+    }, function () {
+      return { kind: 'unreachable', why: 'network' };
+    });
+    return Promise.race([attempt, timeout]).then(function (outcome) {
+      window.clearTimeout(timer);
+      return outcome;
+    });
+  }
+
+  /* One retry after a network failure. Safe: the relay recognises the response ID and does not
+     email the same response twice. */
+  function sendToRelay(body) {
+    return postToRelay(body).then(function (outcome) {
+      if (outcome.kind !== 'unreachable') { return outcome; }
+      setRelayNote('Still trying...');
+      return new Promise(function (resolve) { window.setTimeout(resolve, 2000); }).then(function () { return postToRelay(body); });
+    });
+  }
+
+  function forgetDraft() {
+    discarded = true;
+    window.clearTimeout(saveTimer);
+    storageClear();
+  }
+
+  function onRelaySend() {
+    if (dom.sending || dom.delivered || !readyToSend()) { return; }
+    var when = dom.when || new Date();
+    var pdf = PDF_ON && dom.pdf && dom.pdf.status === 'ready' ? dom.pdf : null;
+    var report = buildReport(false, when, pdf ? pdf.name : null);
+    var subject = subjectLine();
+    var body = relayBody(report, subject, pdf);
+
+    dom.sending = true;
+    dom.sent.hidden = true;
+    setSendState();
+    setRelayNote('Sending your answers...');
+    announce('Sending your answers.');
+
+    var outcome = body ?
+      sendToRelay(body) :
+      Promise.resolve({ kind: 'rejected', data: { ok: false, code: 'client', message: 'This browser could not prepare the message.' } });
+    outcome.then(function (result) {
+      dom.sending = false;
+      setRelayNote('');
+      if (result.kind === 'ok') {
+        dom.delivered = true;
+        setSendState();
+        forgetDraft();
+        showRelayDelivered(result.data, report, pdf);
+      } else {
+        setSendState();
+        showRelayFallback(result, report, subject, pdf);
+      }
+    });
+  }
+
+  /* ---- the confirmation panels --------------------------------------------------------------- */
+
+  function openPanel(title) {
+    var box = dom.sent;
+    box.textContent = '';
+    box.appendChild(h('h3', { class: 'sent-title', id: 'sent-title', text: title }));
+    return box;
+  }
+
+  function revealPanel(box, message) {
+    box.hidden = false;
+    box.focus({ preventScroll: true });
+    scrollToEl(box);
+    announce(message);
+  }
+
   function downloadReport(report) {
     var blob = new Blob([report.text.replace(/\n/g, '\r\n')], { type: 'text/plain;charset=utf-8' });
     var url = URL.createObjectURL(blob);
@@ -1091,22 +1294,19 @@
     window.setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
   }
 
-  function showSent(report, subject, mail, links, copiedOk, pdf) {
-    var box = dom.sent;
-    box.textContent = '';
-    box.appendChild(h('h3', { class: 'sent-title', id: 'sent-title', text: 'Your email is ready' }));
-    var steps = h('ol', { class: 'sent-steps' });
-    if (pdf) {
-      steps.appendChild(h('li', null,
-        CONFIG.pdfAutoDownload !== false ? 'A PDF copy of your questions and answers was saved to this device as ' : 'Your PDF copy is ready: ',
-        h('strong', { text: pdf.name }), '. If you cannot find it, use "Download the PDF" below.'));
-      steps.appendChild(h('li', { text: 'In the email that opened, attach that PDF (look for the paperclip). The message also lists your answers as text, so nothing is lost if you cannot attach it.' }));
-    } else {
-      steps.appendChild(h('li', { text: 'Check the message in your email app. It should list your answers and end with "END OF RESPONSE".' }));
-    }
-    steps.appendChild(h('li', { text: 'Press Send in your email app. Until you do, nothing has been sent.' }));
-    box.appendChild(steps);
+  function copyButton(report) {
+    return h('button', {
+      type: 'button', class: 'btn ghost', text: 'Copy answers',
+      onclick: function () { copyText(report.text).then(function (ok) { announce(ok ? 'Answers copied.' : 'Copy failed. Select the text in the box above and copy it.'); }); }
+    });
+  }
 
+  function textFileButton(report) {
+    return h('button', { type: 'button', class: 'btn ghost', text: 'Download as a text file', onclick: function () { downloadReport(report); } });
+  }
+
+  /* The note shown when the draft was shortened or cut for the email app's length limit. */
+  function appendTierNote(box, mail, links, copiedOk) {
     if (mail.tier === 'compact') {
       box.appendChild(h('p', { class: 'note', text: 'The message is long, so your email app received your answers with the long question wording shortened. Every answer is included.' }));
     } else if (mail.tier === 'cut') {
@@ -1118,7 +1318,10 @@
           'the full set is on your clipboard: select everything in the message, paste, then send.' :
           'press "Copy answers" below, then select everything in the message, paste, and send.')));
     }
+  }
 
+  /* The buttons for the email route: PDF, share, copy, text file, webmail. */
+  function emailActions(report, subject, links, pdf) {
     var actions = h('div', { class: 'actions' });
     var shareable = canSharePdf(pdf);
     if (pdf) {
@@ -1127,21 +1330,42 @@
     if (shareable) {
       actions.appendChild(h('button', { type: 'button', class: 'btn ghost', text: 'Share the PDF', onclick: function () { sharePdf(pdf, subject, report); } }));
     }
-    actions.appendChild(h('button', {
-      type: 'button', class: 'btn ghost', text: 'Copy answers',
-      onclick: function () { copyText(report.text).then(function (ok) { announce(ok ? 'Answers copied.' : 'Copy failed. Select the text in the box above and copy it.'); }); }
-    }));
-    actions.appendChild(h('button', { type: 'button', class: 'btn ghost', text: 'Download as a text file', onclick: function () { downloadReport(report); } }));
+    actions.appendChild(copyButton(report));
+    actions.appendChild(textFileButton(report));
     links.forEach(function (l) {
       actions.appendChild(h('a', { class: 'btn ghost', href: l.url, target: '_blank', rel: 'noopener', text: 'Open ' + l.label }));
     });
-    box.appendChild(h('p', { class: 'sent-lead', text: 'Nothing opened, or you use webmail? Pick another way:' }));
-    box.appendChild(actions);
+    return { el: actions, shareable: shareable };
+  }
+
+  function appendEmailFooter(box, subject, pdf, shareable) {
     if (shareable) {
       box.appendChild(h('p', { class: 'note', text: '"Share the PDF" attaches the file for you from your phone\'s share menu. It cannot fill in the address, so the address is copied for you to paste into the To box.' }));
     }
     box.appendChild(h('p', { class: 'sent-manual' }, 'Writing it yourself: to ', h('strong', { text: recipient() }),
       ', subject "' + subject + '", and paste your answers in the body' + (pdf ? ', then attach the PDF.' : '.')));
+  }
+
+  /* The email route, after the email app was asked to open. */
+  function showSent(report, subject, mail, links, copiedOk, pdf) {
+    var box = openPanel('Your email is ready');
+    var steps = h('ol', { class: 'sent-steps' });
+    if (pdf) {
+      steps.appendChild(h('li', null,
+        CONFIG.pdfAutoDownload !== false ? 'A PDF copy of your questions and answers was saved to this device as ' : 'Your PDF copy is ready: ',
+        h('strong', { text: pdf.name }), '. If you cannot find it, use "Download the PDF" below.'));
+      steps.appendChild(h('li', { text: 'In the email that opened, attach that PDF (look for the paperclip). The message also lists your answers as text, so nothing is lost if you cannot attach it.' }));
+    } else {
+      steps.appendChild(h('li', { text: 'Check the message in your email app. It should list your answers and end with "END OF RESPONSE".' }));
+    }
+    steps.appendChild(h('li', { text: 'Press Send in your email app. Until you do, nothing has been sent.' }));
+    box.appendChild(steps);
+    appendTierNote(box, mail, links, copiedOk);
+
+    var acts = emailActions(report, subject, links, pdf);
+    box.appendChild(h('p', { class: 'sent-lead', text: 'Nothing opened, or you use webmail? Pick another way:' }));
+    box.appendChild(acts.el);
+    appendEmailFooter(box, subject, pdf, acts.shareable);
 
     box.appendChild(h('div', { class: 'sent-done' },
       h('p', { text: 'Thank you. Your answers help decide what gets built and how it is taught.' }),
@@ -1150,10 +1374,91 @@
         onclick: discard
       })));
 
-    box.hidden = false;
-    box.focus({ preventScroll: true });
-    scrollToEl(box);
-    announce(copiedOk ? 'Your email is ready. Your answers are also copied.' : 'Your email is ready.');
+    revealPanel(box, copiedOk ? 'Your email is ready. Your answers are also copied.' : 'Your email is ready.');
+  }
+
+  /* The relay accepted the response. */
+  function showRelayDelivered(data, report, pdf) {
+    var box = openPanel('Your answers were sent');
+    var emailed = data.delivered !== 'stored';
+    var sentPdf = !!pdf && emailed && data.attached !== false;
+    box.appendChild(h('p', { text: emailed ?
+      'Your answers' + (sentPdf ? ' and a PDF copy' : '') + ' were sent to the Dhar project.' :
+      'Your answers were received and saved by the Dhar project.' }));
+    if (data.duplicate) {
+      box.appendChild(h('p', { class: 'note', text: 'This response had already arrived, so it was not sent a second time.' }));
+    } else if (pdf && emailed && data.attached === false) {
+      box.appendChild(h('p', { class: 'note', text: 'The PDF copy could not be attached, but all your answers are in the message.' }));
+    }
+    box.appendChild(h('p', { class: 'sent-manual' }, 'Reference: ', h('strong', { text: dom.id }), '. Quote it if you write to the project about this response.'));
+    box.appendChild(h('p', { class: 'sent-manual', text: 'Your unfinished answers were removed from this device. The copy below is only what this page is showing now.' }));
+
+    var actions = h('div', { class: 'actions' });
+    if (pdf) { actions.appendChild(h('button', { type: 'button', class: 'btn ghost', text: 'Download my copy (PDF)', onclick: function () { downloadPdf(pdf); } })); }
+    actions.appendChild(copyButton(report));
+    actions.appendChild(textFileButton(report));
+    box.appendChild(h('p', { class: 'sent-lead', text: 'Keep a copy for yourself if you like:' }));
+    box.appendChild(actions);
+
+    box.appendChild(h('div', { class: 'sent-done' },
+      h('p', { text: 'Thank you. Your answers help decide what gets built and how it is taught.' }),
+      h('button', { type: 'button', class: 'btn ghost', text: 'Start a blank survey', onclick: discard })));
+
+    revealPanel(box, 'Your answers were sent.');
+  }
+
+  /* The relay could not take the response (or its answer could not be read). Offer the email
+     route, which always works, and a retry. */
+  function showRelayFallback(outcome, report, subject, pdf) {
+    var compact = buildReport(true, dom.when || new Date(), pdf ? pdf.name : null);
+    var mail = buildMailto(subject, report.text, compact.text);
+    var links = buildWebLinks(subject, report.text, compact.text);
+    var data = outcome.data || {};
+    var title, lead, canRetry;
+    if (outcome.kind === 'unreachable') {
+      title = 'We could not confirm that your answers arrived';
+      lead = 'Your connection may have dropped, or the sending service did not answer. Your answers may have arrived anyway. To be certain, send them by email as well. If both arrive, that is fine: this response has the reference ' + dom.id + ' and duplicates are recognised.';
+      canRetry = true;
+    } else if (data.code === 'busy' || data.code === 'too-many' || data.code === 'quota' || data.code === 'server') {
+      title = 'Your answers have not been sent yet';
+      lead = 'The sending service is busy or at its limit right now. You can try again in a moment, or send your answers by email instead. Your answers are still on this page.';
+      canRetry = true;
+    } else {
+      title = 'Your answers have not been sent yet';
+      lead = 'The sending service did not accept this response' + (data.code ? ' (' + data.code + ')' : '') + '. Please send your answers by email instead. Your answers are still on this page.';
+      canRetry = false;
+    }
+
+    var box = openPanel(title);
+    box.appendChild(h('p', { class: 'warn', text: lead }));
+    var steps = h('ol', { class: 'sent-steps' });
+    steps.appendChild(h('li', { text: 'Press "Open my email app". It opens a message already addressed to the Dhar project with your answers written in it' + (pdf && CONFIG.pdfAutoDownload !== false ? ', and saves a PDF copy to this device.' : '.') }));
+    if (pdf) {
+      steps.appendChild(h('li', { text: 'Attach the PDF to that email (look for the paperclip). The message also lists your answers as text, so nothing is lost if you cannot attach it.' }));
+    }
+    steps.appendChild(h('li', { text: 'Press Send in your email app. Until you do, nothing has been sent by email.' }));
+    box.appendChild(steps);
+
+    var main = h('div', { class: 'actions' });
+    main.appendChild(h('a', {
+      class: 'btn primary', href: mail.url, text: 'Open my email app',
+      onclick: function () {
+        copyText(report.text);
+        if (pdf && CONFIG.pdfAutoDownload !== false) { downloadPdf(pdf); }
+      }
+    }));
+    if (canRetry) {
+      main.appendChild(h('button', { type: 'button', class: 'btn ghost', text: 'Try sending again', onclick: function () { dom.sent.hidden = true; onRelaySend(); } }));
+    }
+    box.appendChild(main);
+    appendTierNote(box, mail, links, false);
+
+    var acts = emailActions(report, subject, links, pdf);
+    box.appendChild(h('p', { class: 'sent-lead', text: 'Or pick another way:' }));
+    box.appendChild(acts.el);
+    appendEmailFooter(box, subject, pdf, acts.shareable);
+
+    revealPanel(box, title + '. Email options are shown below.');
   }
 
   /* ======================================================================= *
@@ -1170,9 +1475,7 @@
 
   /* "Start over" and "I have sent it": forget the draft and reload a blank survey. */
   function discard() {
-    discarded = true;
-    window.clearTimeout(saveTimer);
-    storageClear();
+    forgetDraft();
     window.location.reload();
   }
 
@@ -1203,6 +1506,21 @@
    * 12. Start-up
    * ======================================================================= */
 
+  /* The wording on the start page and in the footer says how answers travel, so it must match
+     the mode in config.js. index.html carries the email-route wording (also what shows without
+     JavaScript); with the relay on, this replaces it. */
+  function applyDeliveryText() {
+    if (!RELAY_ON) { return; }
+    var privacy = document.getElementById('privacy');
+    var foot = document.getElementById('foot-note');
+    if (privacy) {
+      privacy.textContent = 'When you finish and press Send, your answers and a PDF copy of them are sent over an encrypted connection to a small service on Google\'s servers that the project runs, and it saves them in a private Google Sheet and emails them to Abdullahi Baba Garba, who leads the project. He sees only what you type, and your email address only if you give it. Nothing is sent before you press Send, and unfinished answers stay on this device. If you would rather send them yourself, an email option sits next to the Send button. Answers are never published with your name. This page loads nothing from other sites.';
+    }
+    if (foot) {
+      foot.textContent = 'Answers are sent only when you press Send. Unfinished answers stay on your device.';
+    }
+  }
+
   function init() {
     mount.textContent = '';
 
@@ -1222,6 +1540,7 @@
     form.addEventListener('submit', function (e) { e.preventDefault(); onNext(); });
     mount.appendChild(form);
 
+    applyDeliveryText();
     var restored = restore();
     syncAll();
     if (restored) {

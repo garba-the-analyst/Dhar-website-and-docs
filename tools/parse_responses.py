@@ -25,8 +25,8 @@ WHAT IT ACCEPTS (standard library only, no installs)
   - several responses in one file
 
 CSV COLUMNS
-  source, response, survey_version, submitted, roles, answered, wording, pdf_copy, complete,
-  then one column per question code in the order the codes first appear.
+  source, response, response_id, survey_version, submitted, roles, answered, wording, pdf_copy,
+  complete, then one column per question code in the order the codes first appear.
     - single choice: the option text
     - multiple choice: the options joined with " | "
     - 1-5 and 0-10 scales: the number only
@@ -35,6 +35,10 @@ CSV COLUMNS
   wording is "full" or "shortened" (long emails carry every answer with shortened
   question text, see README). pdf_copy is the file name of the PDF the respondent was told to
   attach (empty when no PDF was made), so a PDF in the mailbox can be paired with its row.
+  response_id is the reference printed in every response ("dhar-20261019-154500-k3x9ab"). A
+  response that reached you twice (sent through the relay and again by email, or retried) carries
+  the same ID: only one row is kept, the complete one if the copies differ, and the number of
+  duplicates dropped is reported. Responses without an ID are never merged.
   complete is "yes" when the response ended with
   "== END OF RESPONSE ==" and "no" when the email was cut short (the first part,
   which holds the contact details and basics, is still read).
@@ -59,7 +63,7 @@ QUESTION = re.compile(r"^\[([A-Z]+[0-9]+[a-z]?)\]\s+(.*)$")
 SCALE = re.compile(r"^\s*(\d+) of (\d+)(?: \(.*\))?$")
 GRID_ROW = re.compile(r"^- (.*): (\d+) of \d+$")
 GRID_KEY = re.compile(r"^\(1 = .*\)$")
-FIXED_COLUMNS = ["source", "response", "survey_version", "submitted", "roles", "answered", "wording", "pdf_copy", "complete"]
+FIXED_COLUMNS = ["source", "response", "response_id", "survey_version", "submitted", "roles", "answered", "wording", "pdf_copy", "complete"]
 
 
 def message_text(msg):
@@ -151,6 +155,8 @@ def parse_block(block):
             rec["wording"] = value
         elif key == "pdf copy":
             rec["pdf_copy"] = value
+        elif key == "response id":
+            rec["response_id"] = value
         i += 1
     # body
     code = None
@@ -186,16 +192,31 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     rows, codes = [], []
+    by_id = {}          # response_id -> index in rows, so a repeat can replace a cut-short copy
+    duplicates = 0
     for path in args.inputs:
         for label, text in load_texts(path):
             for block in split_blocks(clean_lines(text)):
                 rec, _texts = parse_block(block)
                 rec["source"] = label
-                rec["response"] = len(rows) + 1
+                rid = rec.get("response_id", "")
+                if rid and rid in by_id:
+                    duplicates += 1
+                    kept = rows[by_id[rid]]
+                    # keep the complete copy; between two equal copies keep the first one seen
+                    if kept.get("complete") != "yes" and rec.get("complete") == "yes":
+                        rec["response"] = kept["response"]
+                        rows[by_id[rid]] = rec
+                    else:
+                        continue
+                else:
+                    rec["response"] = len(rows) + 1
+                    if rid:
+                        by_id[rid] = len(rows)
+                    rows.append(rec)
                 for c in rec:
                     if c not in FIXED_COLUMNS and c not in codes:
                         codes.append(c)
-                rows.append(rec)
 
     with open(args.output, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=FIXED_COLUMNS + codes, extrasaction="ignore", restval="")
@@ -203,7 +224,8 @@ def main(argv=None):
         writer.writerows(rows)
 
     incomplete = sum(1 for r in rows if r.get("complete") != "yes")
-    print(f"{len(rows)} responses written to {args.output} ({len(codes)} question columns, {incomplete} cut short)", file=sys.stderr)
+    extra = f", {duplicates} duplicate{'s' if duplicates != 1 else ''} merged" if duplicates else ""
+    print(f"{len(rows)} responses written to {args.output} ({len(codes)} question columns, {incomplete} cut short{extra})", file=sys.stderr)
     return 0 if rows else 1
 
 
