@@ -1,0 +1,38 @@
+# Render Blueprint: two static sites from this repository, one per branch.
+#   Render dashboard -> New -> Blueprint -> pick this repository. Each site deploys on every push to its branch.
+# Both are plain static files; there is nothing to build.
+services:
+  # The Dhar website: the public/ folder of the `main` branch.
+  - type: web
+    runtime: static
+    name: dhar
+    repo: https://github.com/garba-the-analyst/dhar-website-and-docs
+    branch: main
+    buildCommand: echo "static site, nothing to build"
+    staticPublishPath: ./public
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=86400
+
+  # The "Shaping Dhar" survey: the whole `shaping-dhar` branch (it carries its own index.html at the root).
+  - type: web
+    runtime: static
+    name: shaping-dhar
+    repo: https://github.com/garba-the-analyst/dhar-website-and-docs
+    branch: shaping-dhar
+    buildCommand: echo "static site, nothing to build"
+    staticPublishPath: ./
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
