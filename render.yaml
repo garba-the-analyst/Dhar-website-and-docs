@@ -1,15 +1,16 @@
-# Render Blueprint: the Dhar website, one static site, from the `public/` folder of this repository.
-#   Render dashboard -> New -> Blueprint -> pick this repository (branch main).
-# The survey is a page of the website (public/survey/), so it is deployed with it: there is one site, one branch.
-# `repo` and `branch` are left out on purpose: Render then uses the repository and branch the Blueprint is
-# created from, so a renamed repository or a branch that does not exist can no longer make the Blueprint fail.
-# There is nothing to build; the build command is a placeholder because Render requires one.
+# Render Blueprint for the Dhar website (one static site; the survey is a page of it at /survey/).
+#
+#   Render dashboard -> New -> Blueprint -> pick this repository (Dhar-website-and-docs) -> Apply.
+#
+# `repo` and `branch` are left out on purpose: Render then uses the repository and branch you picked
+# when you created the Blueprint. Nothing is built; the folder public/ is the site as it stands.
 services:
   - type: web
     runtime: static
     name: dhar
     buildCommand: echo "static site, nothing to build"
     staticPublishPath: ./public
+    autoDeployTrigger: commit
     headers:
       - path: /*
         name: X-Content-Type-Options

@@ -88,6 +88,6 @@ window.DHAR_CONFIG = {
   storagePrefix: 'dhar-survey',
 
   /* Shown in the page footer. Leave repoUrl empty to hide the link. */
-  repoUrl: 'https://github.com/garba-the-analyst/forge-of-dhar/tree/gh-pages',
+  repoUrl: 'https://github.com/garba-the-analyst/Dhar-website-and-docs/tree/main/survey',
   licenseNote: 'Open source under the MIT licence'
 };

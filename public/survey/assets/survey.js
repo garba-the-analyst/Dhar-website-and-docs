@@ -63,6 +63,12 @@
   var RELAY_URL = typeof CONFIG.relayUrl === 'string' && /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)[:\/])/i.test(CONFIG.relayUrl.trim()) ? CONFIG.relayUrl.trim() : '';
   var RELAY_ON = RELAY_URL !== '' && typeof window.fetch === 'function' && typeof Promise !== 'undefined';
 
+  /* Direct delivery to the website's database (assets/dhar-db.js, a Supabase table that only accepts new
+     rows). On when that file is loaded and has an address and key. It takes precedence over the relay.
+     Either one makes the main button "Send my answers"; the email route stays as the fallback. */
+  var DB_ON = !!(window.DharDB && window.DharDB.ready() && window.DharDB.tables.indexOf('survey_responses') !== -1);
+  var DIRECT_ON = DB_ON || RELAY_ON;
+
   /* ======================================================================= *
    * 2. Small helpers
    * ======================================================================= */
@@ -929,20 +935,24 @@
       class: 'field report', readonly: true, rows: '14', id: 'report-text', spellcheck: 'false',
       'aria-label': 'Your answers, exactly as they will be emailed'
     });
-    dom.sendBtn = h('button', { type: 'button', class: 'btn primary big', id: 'btn-send', text: RELAY_ON ? 'Send my answers' : (PDF_ON ? 'Download PDF and email it' : 'Send by email'), onclick: RELAY_ON ? onRelaySend : onSend });
-    dom.emailBtn = RELAY_ON ? h('button', { type: 'button', class: 'btn ghost', id: 'btn-email', text: 'Send it from my own email app instead', onclick: onSend }) : null;
+    dom.sendBtn = h('button', { type: 'button', class: 'btn primary big', id: 'btn-send', text: DIRECT_ON ? 'Send my answers' : (PDF_ON ? 'Download PDF and email it' : 'Send by email'), onclick: DIRECT_ON ? onRelaySend : onSend });
+    dom.emailBtn = DIRECT_ON ? h('button', { type: 'button', class: 'btn ghost', id: 'btn-email', text: 'Send it from my own email app instead', onclick: onSend }) : null;
     dom.pdfNote = h('p', { class: 'send-note', id: 'pdf-note', role: 'status', hidden: !PDF_ON });
-    dom.relayNote = RELAY_ON ? h('p', { class: 'send-note', id: 'relay-note', role: 'status' }) : null;
+    dom.relayNote = DIRECT_ON ? h('p', { class: 'send-note', id: 'relay-note', role: 'status' }) : null;
     dom.sent = h('div', { class: 'sent', id: 'sent', hidden: true, tabindex: '-1', role: 'region', 'aria-labelledby': 'sent-title' });
 
-    var intro = RELAY_ON ?
+    var intro = DB_ON ?
+      'Pressing "Send my answers" saves your answers in the Dhar project\'s database over an encrypted connection. A PDF copy of your questions and answers is made on this device for you to keep. You do not need to open your email app. Nothing is sent until you press the button.' :
+      RELAY_ON ?
       'Pressing "Send my answers" sends your answers and a PDF copy of your questions and answers to the Dhar project over an encrypted connection. You do not need to open your email app. Nothing is sent until you press the button.' :
       (PDF_ON ?
         'Sending saves a PDF copy of your questions and answers on this device and opens your email app with a message already written and addressed to the Dhar project. Attach the PDF, then press Send there. Nothing is sent until you press Send.' :
         'Sending opens your email app with your answers already written and addressed to the Dhar project. Nothing is sent until you press Send there.');
-    var sendRow = RELAY_ON ?
+    var sendRow = DIRECT_ON ?
       h('div', { class: 'send-row' }, dom.sendBtn, dom.pdfNote,
-        h('p', { class: 'send-note', text: 'The message passes through a small service on Google\'s servers that the project runs. It saves your answers in a private spreadsheet and emails them to Abdullahi Baba Garba. If you gave an email address, he can reply to it.' }),
+        h('p', { class: 'send-note', text: DB_ON ?
+          'Your answers are stored in a private database that the project runs on Supabase. The public cannot read it; only Abdullahi Baba Garba, who leads the project, can. If you gave an email address, he can write to you.' :
+          'The message passes through a small service on Google\'s servers that the project runs. It saves your answers in a private spreadsheet and emails them to Abdullahi Baba Garba. If you gave an email address, he can reply to it.' }),
         dom.relayNote,
         h('div', { class: 'send-alt' },
           h('p', { class: 'send-note', text: 'Prefer to send it yourself?' }), dom.emailBtn)) :
@@ -952,7 +962,7 @@
     var el = h('section', { class: 'step', id: 'step-review', hidden: true, 'aria-labelledby': headingId, 'data-step': 'review' },
       h('header', { class: 'step-head' }, count, heading, h('p', { class: 'step-intro', text: intro })),
       dom.summary,
-      h('details', { class: 'preview' }, h('summary', { text: RELAY_ON ? 'Read exactly what will be sent' : 'Read exactly what will be emailed' }), dom.reportBox),
+      h('details', { class: 'preview' }, h('summary', { text: DIRECT_ON ? 'Read exactly what will be sent' : 'Read exactly what will be emailed' }), dom.reportBox),
       sendRow,
       dom.sent);
     dom.step.review = { el: el, count: count, heading: heading, sec: REVIEW };
@@ -999,7 +1009,7 @@
     if (dom.delivered) { label = 'Sent'; }
     else if (dom.sending) { label = 'Sending...'; }
     else if (busy) { label = 'Preparing your PDF...'; }
-    else if (RELAY_ON) { label = 'Send my answers'; }
+    else if (DIRECT_ON) { label = 'Send my answers'; }
     else if (PDF_ON && p && p.status === 'ready') { label = 'Download PDF and email it'; }
     else { label = 'Send by email'; }
     dom.sendBtn.textContent = label;
@@ -1013,7 +1023,7 @@
     } else if (p.status === 'ready') {
       dom.pdfNote.textContent = 'PDF ready: ' + p.name + ' (' + Math.max(1, Math.round(p.size / 1024)) + ' KB).';
     } else {
-      dom.pdfNote.textContent = RELAY_ON ?
+      dom.pdfNote.textContent = DIRECT_ON ?
         'The PDF could not be made on this device. Your answers will be sent as text without it.' :
         'The PDF could not be made on this device. Your email will carry your answers as text instead.';
     }
@@ -1230,6 +1240,57 @@
     });
   }
 
+  /* ---- direct delivery to the database -------------------------------------------------------- */
+
+  /* The answers that belong in the database: those of the questions that are visible and answered
+     right now (the same rule as the report), with the text of any "Other" box. Hidden answers stay
+     on the device and are never sent. */
+  function reportedAnswers() {
+    var out = {};
+    reportSections().forEach(function (sec) {
+      visibleQuestions(sec).forEach(function (q) {
+        if (!isAnswered(q)) { return; }
+        out[q.code] = state.answers[q.code];
+        var other = state.answers[q.code + '#other'];
+        if (typeof other === 'string' && other.trim() !== '') { out[q.code + '#other'] = other; }
+      });
+    });
+    return out;
+  }
+
+  /* One row of the survey_responses table (supabase/migrations/). client_id is the reference number
+     the respondent sees; the table keeps it unique, so a retry cannot store a response twice. */
+  function dbRow(report) {
+    return {
+      client_id: dom.id,
+      survey_version: SURVEY.version,
+      roles: rolesPicked().slice(0, 4),
+      answers: reportedAnswers(),
+      report_text: report.text
+    };
+  }
+
+  /* The same three outcomes as postToRelay: ok, rejected (the database said no), unreachable. */
+  function postToDb(row) {
+    return window.DharDB.insert('survey_responses', row).then(function (r) {
+      if (r.kind === 'ok') { return { kind: 'ok', data: { ok: true, delivered: 'stored' } }; }
+      if (r.kind === 'unreachable') { return r; }
+      var code = 'database';
+      if (r.status === 429 || /too many/i.test(r.message || '')) { code = 'too-many'; }
+      else if (r.status >= 500) { code = 'server'; }
+      return { kind: 'rejected', data: { ok: false, code: code, message: r.message } };
+    });
+  }
+
+  /* One retry after a network failure. Safe: the table ignores a repeated client_id. */
+  function sendToDb(row) {
+    return postToDb(row).then(function (outcome) {
+      if (outcome.kind !== 'unreachable') { return outcome; }
+      setRelayNote('Still trying...');
+      return new Promise(function (resolve) { window.setTimeout(resolve, 2000); }).then(function () { return postToDb(row); });
+    });
+  }
+
   function forgetDraft() {
     discarded = true;
     window.clearTimeout(saveTimer);
@@ -1242,7 +1303,7 @@
     var pdf = PDF_ON && dom.pdf && dom.pdf.status === 'ready' ? dom.pdf : null;
     var report = buildReport(false, when, pdf ? pdf.name : null);
     var subject = subjectLine();
-    var body = relayBody(report, subject, pdf);
+    var body = DB_ON ? dbRow(report) : relayBody(report, subject, pdf);
 
     dom.sending = true;
     dom.sent.hidden = true;
@@ -1251,7 +1312,7 @@
     announce('Sending your answers.');
 
     var outcome = body ?
-      sendToRelay(body) :
+      (DB_ON ? sendToDb(body) : sendToRelay(body)) :
       Promise.resolve({ kind: 'rejected', data: { ok: false, code: 'client', message: 'This browser could not prepare the message.' } });
     outcome.then(function (result) {
       dom.sending = false;
@@ -1510,9 +1571,18 @@
      the mode in config.js. index.html carries the email-route wording (also what shows without
      JavaScript); with the relay on, this replaces it. */
   function applyDeliveryText() {
-    if (!RELAY_ON) { return; }
+    if (!DIRECT_ON) { return; }
     var privacy = document.getElementById('privacy');
     var foot = document.getElementById('foot-note');
+    if (DB_ON) {
+      if (privacy) {
+        privacy.textContent = 'When you finish and press Send, your answers are saved over an encrypted connection in a private database that the project runs on Supabase. The public cannot read it; only Abdullahi Baba Garba, who leads the project, can. He sees only what you type, and your email address only if you give it. A PDF copy of your questions and answers is made on this device for you to keep. Nothing is sent before you press Send, and unfinished answers stay on this device. If you would rather send them yourself, an email option sits next to the Send button. Answers are never published with your name. This page loads nothing from other sites; the only place it sends anything is the database, and only when you press Send.';
+      }
+      if (foot) {
+        foot.textContent = 'Answers are sent only when you press Send. Unfinished answers stay on your device.';
+      }
+      return;
+    }
     if (privacy) {
       privacy.textContent = 'When you finish and press Send, your answers and a PDF copy of them are sent over an encrypted connection to a small service on Google\'s servers that the project runs, and it saves them in a private Google Sheet and emails them to Abdullahi Baba Garba, who leads the project. He sees only what you type, and your email address only if you give it. Nothing is sent before you press Send, and unfinished answers stay on this device. If you would rather send them yourself, an email option sits next to the Send button. Answers are never published with your name. This page loads nothing from other sites.';
     }

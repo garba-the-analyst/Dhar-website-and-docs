@@ -1,0 +1,342 @@
+/*
+ * survey.css: what the Shaping Dhar survey adds to the website's stylesheet (../../assets/site.css).
+ *
+ * The survey is a page of the Dhar website, so it wears the website's design and nothing else:
+ *   - COLOUR. Only the six colours of the Dhar palette, through the tokens site.css defines
+ *     (--forge, --ember, --steel, --cyan, --copper, --ash and the roles built from them). There is no
+ *     hex colour in this file; tests/run_tests.py checks that. Dark only, as the whole site is.
+ *   - TYPE. Saira for everything that is read, JetBrains Mono for numbers and labels (site.css loads both).
+ *   - SHAPE. Panels, option rows and buttons are cut, not rounded: a straight edge with a 45-degree
+ *     chamfer on the top right corner, like the logo. No rounded corners anywhere.
+ *   - STATE is shown by shape and by words as well as colour: an error carries a marker and text, a
+ *     chosen option carries a filled box and a heavier edge.
+ *
+ * Everything here is scoped under .sv-page, because site.css already uses some of the same class names
+ * for other things (.note, .seg, .hero ...). Reading order of this file:
+ *   1 Base and utilities   2 Progress band   3 Start page   4 Steps and questions   5 Option rows
+ *   6 Optional blocks   7 Scales and grids   8 Text fields   9 Buttons and navigation
+ *  10 Review and confirmation   11 Wider and narrower screens
+ */
+
+/* ======================================================================== *
+ * 1. Base and utilities
+ * ======================================================================== */
+
+.sv-page [hidden] { display: none !important; }
+
+.sv-page .sr {
+  position: absolute !important;
+  width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* A shape-and-word marker, the same cut square the status chips use. */
+.sv-page .q-err::before,
+.sv-page .nav-err::before,
+.sv-page .warn::before {
+  content: "";
+  display: inline-block; width: .7rem; height: .7rem; margin-right: .55rem; flex: none;
+  clip-path: polygon(0 0, 65% 0, 100% 35%, 100% 100%, 0 100%);
+  background: var(--ember);
+}
+
+/* ======================================================================== *
+ * 2. Progress band: molten metal along the bottom edge of the header
+ * ======================================================================== */
+
+.sv-page .temper { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--line); }
+.sv-page .temper::before {
+  content: "";
+  position: absolute; top: 0; bottom: 0; left: 0;
+  width: calc(var(--p, .1) * 100%);
+  background: var(--heat);
+  transition: width .5s ease;
+}
+
+/* ======================================================================== *
+ * 3. Start page
+ * ======================================================================== */
+
+.sv-page .sv-hero { padding-block: clamp(2rem, 5vw, 3.5rem) 1.25rem; }
+
+.sv-page .title {
+  margin: 0;
+  font-size: clamp(2.6rem, 1.4rem + 5vw, 4.6rem);
+  font-weight: 700; font-stretch: 125%;
+  line-height: .98; letter-spacing: -.01em;
+}
+.sv-page .title span { display: block; }
+.sv-page .title .hot { color: var(--ember); }
+
+.sv-page .lead {
+  margin: 1.25rem 0 0; max-width: 32rem;
+  font-size: clamp(1.15rem, 1rem + .6vw, 1.4rem); line-height: 1.4;
+  font-weight: 500; font-stretch: 108%; color: var(--fg);
+}
+.sv-page .intro { max-width: 38rem; margin-top: 1.25rem; }
+.sv-page .intro p { margin: 0 0 .9rem; }
+.sv-page .intro .privacy { color: var(--fg-3); font-size: .94rem; }
+
+.sv-page .notice {
+  margin: 1rem 0 0; padding: .75rem 1rem; max-width: 38rem;
+  background: var(--panel); border-left: 3px solid var(--cyan);
+}
+
+.sv-page .code { display: none; margin: 1.75rem 0 0; min-width: 0; }
+.sv-page .code pre { padding: 1.1rem 1.25rem 1.2rem; font: 400 .92rem/1.75 var(--mono); color: var(--fg); }
+.sv-page .code pre code { font: inherit; }
+.sv-page .code figcaption { padding: .7rem 1rem .8rem; border-top: 1px solid var(--hair); font-size: .85rem; line-height: 1.5; color: var(--fg-3); }
+
+/* After the first step the start page shrinks to a title bar, so the questions come first. */
+.sv-page:not([data-step="start"]) .sv-hero { padding-block: 1.5rem .25rem; }
+.sv-page:not([data-step="start"]) .title { font-size: 1.25rem; font-stretch: 118%; letter-spacing: 0; }
+.sv-page:not([data-step="start"]) .title span { display: inline; }
+.sv-page:not([data-step="start"]) .lead,
+.sv-page:not([data-step="start"]) .intro,
+.sv-page:not([data-step="start"]) .code,
+.sv-page:not([data-step="start"]) .notice { display: none; }
+
+/* ======================================================================== *
+ * 4. Steps and questions
+ * ======================================================================== */
+
+.sv-page #stage { max-width: 48rem; padding-block: 1rem 2rem; }
+
+.sv-page .step-head { margin: 0 0 1.75rem; }
+.sv-page .step-count { margin: 0 0 .35rem; color: var(--ember); font: 500 .85rem/1.4 var(--mono); letter-spacing: .02em; }
+.sv-page .step-count:empty { display: none; }
+.sv-page .step-title {
+  margin: 0;
+  font-size: clamp(1.8rem, 1.2rem + 2.6vw, 2.7rem);
+  font-weight: 700; font-stretch: 125%;
+  line-height: 1.06; letter-spacing: -.005em;
+}
+.sv-page .step-title:focus { outline: none; }
+.sv-page .step-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.sv-page .step-intro { margin: .7rem 0 0; color: var(--fg-2); max-width: 38rem; }
+
+.sv-page .q { margin: 0 0 2.25rem; }
+.sv-page .q-text {
+  display: flex; gap: .75rem; margin: 0 0 .4rem;
+  font-size: 1.15rem; font-weight: 600; font-stretch: 106%; line-height: 1.35; color: var(--fg);
+}
+.sv-page .q-num { flex: 0 0 1.9rem; color: var(--ember); font: 500 .9rem/1.75 var(--mono); font-variant-numeric: tabular-nums; }
+.sv-page .q-opt { margin-left: .35rem; color: var(--fg-3); font: 400 .8rem var(--mono); }
+.sv-page .q-hint { margin: 0 0 .75rem 2.65rem; color: var(--fg-3); font-size: .95rem; }
+.sv-page .q-body { margin: .6rem 0 0 2.65rem; }
+.sv-page .q-count { margin: .6rem 0 0; color: var(--fg-3); font: 400 .85rem var(--mono); font-variant-numeric: tabular-nums; }
+
+.sv-page .q.has-error { border-left: 3px solid var(--ember); padding-left: .75rem; margin-left: -.9rem; }
+.sv-page .q-err { display: flex; align-items: baseline; margin: .55rem 0 0 2.65rem; color: var(--ember); font-weight: 650; font-size: .95rem; }
+
+/* ======================================================================== *
+ * 5. Option rows: the native input sits over a cut panel, so the whole row is the tap target
+ * ======================================================================== */
+
+.sv-page .opts { display: grid; gap: .5rem; }
+.sv-page .opts.chips { grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); }
+.sv-page .opt-group { margin: .9rem 0 .1rem; color: var(--fg-3); font: 500 .8rem var(--mono); letter-spacing: .02em; }
+.sv-page .opt-group:first-child { margin-top: 0; }
+.sv-page .opt-wrap { position: relative; }
+.sv-page .opt { display: block; position: relative; cursor: pointer; }
+.sv-page .opt input {
+  position: absolute; left: .95rem; top: .95rem; z-index: 1;
+  width: 1.2rem; height: 1.2rem; margin: 0;
+  accent-color: var(--ember);
+}
+.sv-page .opt-body {
+  --cut: 12px;
+  display: block; position: relative;
+  min-height: 3rem; padding: .75rem .9rem .75rem 2.85rem;
+  background: var(--panel); border: 1px solid var(--line); color: var(--fg-2);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, 0 100%);
+  transition: border-color .15s, background-color .15s;
+}
+.sv-page .opt-body::after {
+  content: ""; position: absolute; top: 0; right: 0; width: var(--cut); height: var(--cut); pointer-events: none;
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--line) calc(50% - 1px),
+              var(--line) calc(50% + .5px), transparent calc(50% + .5px));
+}
+.sv-page .chips .opt-body { padding: .65rem .8rem .65rem 2.65rem; }
+.sv-page .chips .opt input { left: .8rem; top: .9rem; }
+.sv-page .opt:hover .opt-body { border-color: var(--cyan); }
+.sv-page .opt input:checked + .opt-body {
+  border-color: var(--ember); color: var(--fg);
+  background: color-mix(in srgb, var(--ember) 13%, var(--panel));
+  box-shadow: inset 3px 0 0 var(--ember);
+}
+/* clip-path would cut off an outline, so the keyboard focus ring is drawn inside the panel */
+.sv-page .opt input:focus-visible + .opt-body { box-shadow: inset 0 0 0 2px var(--cyan); border-color: var(--cyan); }
+.sv-page .opt input:checked:focus-visible + .opt-body { box-shadow: inset 0 0 0 2px var(--cyan), inset 5px 0 0 var(--ember); }
+.sv-page .opt input:disabled + .opt-body { opacity: .5; cursor: not-allowed; }
+.sv-page .opt input:disabled:hover + .opt-body { border-color: var(--line); }
+.sv-page .opt-label { display: block; }
+.sv-page .opt-hint { display: block; margin-top: .15rem; color: var(--fg-3); font-size: .88rem; }
+
+/* ======================================================================== *
+ * 6. Optional detail blocks (one per area the respondent works in)
+ * ======================================================================== */
+
+.sv-page .deep { margin: 0 0 .75rem; background: var(--panel); border: 1px solid var(--line); }
+.sv-page .deep summary {
+  display: flex; align-items: center; gap: .9rem; padding: .95rem 1rem;
+  cursor: pointer; list-style: none; font-weight: 600; color: var(--fg);
+}
+.sv-page .deep summary::-webkit-details-marker { display: none; }
+.sv-page .deep summary:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.sv-page .deep summary::before {
+  content: ""; flex: 0 0 auto; width: .55rem; height: .55rem;
+  border-right: 2px solid var(--ember); border-bottom: 2px solid var(--ember);
+  transform: rotate(-45deg); transition: transform .15s ease;
+}
+.sv-page .deep[open] summary::before { transform: rotate(45deg); }
+.sv-page .deep-title { flex: 1 1 auto; }
+.sv-page .deep-meta { color: var(--fg-3); font: 400 .8rem var(--mono); white-space: nowrap; }
+.sv-page .deep-body { padding: 0 1rem .5rem; border-top: 1px solid var(--hair); }
+.sv-page .deep .q { margin-top: 1.5rem; }
+.sv-page .deep .q-num { display: none; }
+.sv-page .deep .q-hint, .sv-page .deep .q-body, .sv-page .deep .q-err { margin-left: 0; }
+.sv-page .deep .q.has-error { margin-left: 0; }
+
+/* ======================================================================== *
+ * 7. Scales and grids (1 to 5 and 0 to 10)
+ * ======================================================================== */
+
+.sv-page .seg {
+  display: grid; grid-template-columns: repeat(5, 1fr); margin: 0;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.sv-page .seg-item { position: relative; display: block; cursor: pointer; }
+.sv-page .seg-item input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.sv-page .seg-n {
+  display: flex; align-items: center; justify-content: center; min-height: 3rem;
+  border-left: 1px solid var(--line); color: var(--fg-2);
+  font: 600 1rem var(--mono); font-variant-numeric: tabular-nums;
+}
+.sv-page .seg-item:first-child .seg-n { border-left: 0; }
+.sv-page .seg-item:hover .seg-n { background: var(--panel-hi); color: var(--fg); }
+.sv-page .seg-item input:checked + .seg-n { background: var(--ember); color: var(--forge); }
+.sv-page .seg-item input:focus-visible + .seg-n { outline: 2px solid var(--cyan); outline-offset: -3px; }
+
+/* 0 to 10 is eleven choices: separate cut chips that wrap, not one fused bar. */
+.sv-page .seg-chips { grid-template-columns: repeat(auto-fit, minmax(2.9rem, 1fr)); gap: .4rem; background: transparent; border: 0; }
+.sv-page .seg-chips .seg-n {
+  --cut: 9px;
+  border: 1px solid var(--line); background: var(--panel);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, 0 100%);
+}
+.sv-page .seg-chips .seg-item:first-child .seg-n { border-left: 1px solid var(--line); }
+.sv-page .seg-chips .seg-item input:checked + .seg-n { background: var(--ember); border-color: var(--ember); color: var(--forge); }
+.sv-page .seg-chips .seg-item input:focus-visible + .seg-n { outline: none; box-shadow: inset 0 0 0 2px var(--cyan); }
+
+.sv-page .seg-ends { display: flex; justify-content: space-between; gap: 1rem; margin-top: .4rem; color: var(--fg-3); font-size: .85rem; }
+.sv-page .seg-ends .mid { text-align: center; }
+
+.sv-page .grid-key { margin: 0 0 .4rem; color: var(--fg-3); font-size: .95rem; }
+.sv-page .grid-row { padding: .9rem 0; border-top: 1px solid var(--hair); }
+.sv-page .grid-label { margin: 0 0 .55rem; color: var(--fg-2); }
+
+/* ======================================================================== *
+ * 8. Text fields
+ * ======================================================================== */
+
+.sv-page .field {
+  display: block; width: 100%; padding: .7rem .85rem;
+  color: var(--fg); background: var(--panel); border: 1px solid var(--steel); border-radius: 0;
+  font: inherit;
+}
+.sv-page .field:hover { border-color: var(--fg-3); }
+.sv-page .field:focus { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--cyan); }
+.sv-page .field::placeholder { color: var(--fg-3); opacity: 1; }
+.sv-page textarea.field { min-height: 7rem; line-height: 1.5; resize: vertical; }
+.sv-page .field.other { margin-top: .4rem; }
+.sv-page .field.report { min-height: 18rem; font: 400 .8125rem/1.45 var(--mono); resize: vertical; }
+
+/* ======================================================================== *
+ * 9. Buttons and navigation (the buttons themselves are the site's .btn)
+ * ======================================================================== */
+
+.sv-page .btn.big { min-height: 3.4rem; padding-inline: 2rem; font-size: 1.1rem; }
+.sv-page .btn:disabled, .sv-page .btn[aria-busy="true"] { opacity: .55; cursor: not-allowed; }
+.sv-page .btn:disabled:hover { border-color: var(--steel); }
+.sv-page .btn.primary:disabled:hover { background: var(--ember); border-color: var(--ember); }
+.sv-page a.btn.ghost, .sv-page button.btn.ghost { color: var(--fg); }
+
+.sv-page .nav { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--hair); }
+.sv-page .nav .btn:first-child:not(:last-child) { margin-right: auto; }
+.sv-page .nav-err {
+  display: flex; align-items: baseline; margin: 1.5rem 0 0; padding: .7rem 1rem;
+  color: var(--ember); background: var(--panel); border-left: 3px solid var(--ember); font-weight: 650;
+}
+
+.sv-page .link { padding: 0; border: 0; background: none; color: var(--cyan); font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* ======================================================================== *
+ * 10. Review and confirmation
+ * ======================================================================== */
+
+.sv-page .review-summary { margin: 0 0 1.25rem; font-weight: 600; color: var(--fg); }
+.sv-page .preview { margin: 0 0 1.5rem; }
+.sv-page .preview summary { cursor: pointer; font-weight: 600; padding: .5rem 0; color: var(--cyan); }
+.sv-page .preview .field { margin-top: .5rem; }
+
+.sv-page .send-row { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; }
+.sv-page .send-note { margin: 0; flex: 1 1 14rem; color: var(--fg-3); font-size: .95rem; }
+.sv-page .send-note:empty { display: none; }
+.sv-page .send-alt { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding-top: 1rem; border-top: 1px solid var(--hair); }
+.sv-page .send-alt .send-note { flex: 0 1 auto; }
+
+.sv-page .sent {
+  --cut: 24px;
+  margin-top: 2rem; padding: 1.25rem 1.25rem 1.5rem;
+  background: var(--panel); border: 1px solid var(--ember);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, 0 100%);
+}
+.sv-page .sent:focus { outline: none; }
+.sv-page .sent:focus-visible { box-shadow: inset 0 0 0 2px var(--cyan); }
+.sv-page .sent-title { margin: 0 0 .75rem; font-size: 1.4rem; font-weight: 700; font-stretch: 118%; color: var(--fg); }
+.sv-page .sent-steps { margin: 0 0 1rem; padding-left: 1.25rem; }
+.sv-page .sent-steps li { margin-bottom: .35rem; }
+.sv-page .warn {
+  display: flex; align-items: baseline; margin: 0 0 1.25rem; padding: .75rem 1rem;
+  background: color-mix(in srgb, var(--copper) 16%, var(--panel)); border-left: 3px solid var(--copper); color: var(--fg);
+}
+.sv-page .warn > strong { margin-right: .3rem; }
+.sv-page .note {
+  margin: 0 0 1.25rem; padding: .75rem 1rem; max-width: none;
+  background: var(--panel-hi); border-left: 3px solid var(--cyan); color: var(--fg-2); font-size: 1rem;
+}
+.sv-page .sent-lead { margin: 1.25rem 0 .6rem; font-weight: 600; color: var(--fg); }
+.sv-page .actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.sv-page .sent-manual { margin: 1rem 0 0; color: var(--fg-3); font-size: .95rem; }
+.sv-page .sent-done { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--hair); }
+.sv-page .sent-done p { margin: 0 0 .9rem; font-weight: 600; color: var(--fg); }
+
+.sv-page .nojs { padding: 1rem 1.25rem; background: var(--panel); border-left: 3px solid var(--ember); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sv-page .temper::before, .sv-page .deep summary::before, .sv-page .opt-body { transition: none; }
+}
+
+/* ======================================================================== *
+ * 11. Narrower and wider screens
+ * ======================================================================== */
+
+@media (max-width: 39.99rem) {
+  /* On phones the controls take the full width; the question number stays in the margin. */
+  .sv-page .q-hint, .sv-page .q-body, .sv-page .q-err { margin-left: 0; }
+  .sv-page .q.has-error { margin-left: 0; }
+  .sv-page .nav .btn { flex: 1 1 0; }
+}
+
+@media (min-width: 48rem) {
+  .sv-page .grid-row { display: flex; align-items: center; gap: 1.5rem; }
+  .sv-page .grid-label { flex: 1 1 auto; margin: 0; }
+  .sv-page .grid-row .seg { flex: 0 0 19rem; }
+}
+
+@media (min-width: 56rem) {
+  .sv-page .hero-inner { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 3.5rem; align-items: start; }
+  .sv-page .code { display: block; margin-top: .75rem; }
+  .sv-page:not([data-step="start"]) .hero-inner { display: block; }
+}
