@@ -3,10 +3,9 @@
 The public face and the written record of the [Dhar](https://github.com/garba-the-analyst/forge-of-dhar) systems
 language, by Abdullahi Baba Garba (*Garba the Analyst*), for Nigerian and African independence in systems software.
 
-| Branch | What it holds |
-| --- | --- |
-| `main` | the **website** (`public/`), the **Canon of Dhar** and its amendments (`docs/canon/`), the **progress reports** (`docs/reports/`), the rules for honest claims, and the tools and tests that keep the site true |
-| `shaping-dhar` | the **Shaping Dhar survey** website, a separate site with its own history (it began on the old `gh-pages` branch of forge-of-dhar) |
+One branch, `main`, holds everything: the **website** (`public/`, including the survey as the page `public/survey/`), the
+**Canon of Dhar** and its amendments (`docs/canon/`), the **progress reports** (`docs/reports/`), the rules for honest
+claims, the database definition (`supabase/`), and the tools and tests that keep the site true.
 
 The compilers live elsewhere: [forge-of-dhar](https://github.com/garba-the-analyst/forge-of-dhar) (Stage 0, in assembly)
 and [honing-dhar](https://github.com/garba-the-analyst/honing-dhar) (Stage 1, in Dhar). What Dhar can do *today* is a
@@ -36,27 +35,22 @@ be written (see the amendment index).
 
 ## Host it on Render
 
-Render dashboard, **New, Blueprint**, pick this repository. `render.yaml` creates two static sites:
+Render dashboard, **New, Blueprint**, pick this repository and the `main` branch. `render.yaml` creates one static site
+(`dhar`) that publishes `public/`. It redeploys on every push to `main`. There is nothing to build.
 
-| Site | Branch | Publishes |
-| --- | --- | --- |
-| `dhar` | `main` | `public/` |
-| `shaping-dhar` | `shaping-dhar` | the branch root |
+(To do it by hand instead: **New, Static Site**, pick this repository and `main`, build command empty or
+`echo static`, publish directory `public`.)
 
-Each redeploys on every push to its branch. There is nothing to build. (To do it by hand instead: New, Static Site, pick
-the branch, set the publish directory to `public` for `main` and `.` for `shaping-dhar`, leave the build command empty.)
-
-Then tell the website where things are, once. Render shows each site's address after the first deploy. Put them in
+Then tell the website where it is, once. Render shows the site's address after the first deploy. Put it in
 `data/site.json` and re-render:
 
 ```json
-{ "site_url": "https://<the dhar site>.onrender.com", "survey_url": "https://<the survey>.onrender.com" }
+{ "site_url": "https://<the dhar site>.onrender.com" }
 ```
 ```
 python3 tools/render_site.py
 ```
-`site_url` makes link previews work. `survey_url` turns on the survey buttons; until it is set, the site shows "the link
-will be here soon" instead of a link that goes nowhere. Commit and push, and both sites update.
+`site_url` makes link previews work. Commit and push, and the site updates.
 
 ## Keeping it true
 
