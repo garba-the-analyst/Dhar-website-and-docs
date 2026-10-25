@@ -123,7 +123,7 @@
       <li data-status="works">
         <span class="chip works">Works</span>
         <div><h3>Stage 0 compiler</h3>
-        <p><code>dharc</code> is written in NASM x86-64 assembly (nine modules, no libc). It reads a <code>.dhar</code> file and writes assembly; <code>nasm</code> and a linker turn that into a program. The conformance battery has 106 tests and all of them pass on both targets.</p></div>
+        <p><code>dharc</code> is written in NASM x86-64 assembly (nine modules, no libc). It reads a <code>.dhar</code> file and writes assembly; <code>nasm</code> and a linker turn that into a program. The conformance battery has 108 tests and all of them pass on both targets.</p></div>
       </li>
       <li data-status="works">
         <span class="chip works">Works</span>
@@ -148,7 +148,7 @@
       <li data-status="partly">
         <span class="chip partly">Partly</span>
         <div><h3>Target: Windows x64</h3>
-        <p>Programs assemble as win64, link into a PE, and run correctly in a CPU emulator that checks the Windows calling rules; all 106 tests pass there. It has not been run on a real Windows machine yet, and <code>dharc</code> itself still runs only on Linux (on Windows, use WSL).</p></div>
+        <p>Programs assemble as win64, link into a PE, and run correctly in a CPU emulator that checks the Windows calling rules; all 108 tests pass there. It has not been run on a real Windows machine yet, and <code>dharc</code> itself still runs only on Linux (on Windows, use WSL).</p></div>
       </li>
       <li data-status="notyet">
         <span class="chip notyet">Not yet</span>
@@ -192,7 +192,7 @@
       </li>
 <!-- status:board:end -->
     </ul>
-    <p class="stamp">Checked <!--asof-long-->25 October 2026<!--/asof-long--> against <code>forge-of-dhar</code>, last code change <code><!--commit-forge-->b4bfb21<!--/commit-forge--></code>, and <code>honing-dhar</code> at commit <code><!--commit-honing-->cfa336b<!--/commit-honing--></code>. This board is generated from one status file in the repository.</p>
+    <p class="stamp">Checked <!--asof-long-->25 October 2026<!--/asof-long--> against <code>forge-of-dhar</code>, last code change <code><!--commit-forge-->f763ff9<!--/commit-forge--></code>, and <code>honing-dhar</code> at commit <code><!--commit-honing-->cfa336b<!--/commit-honing--></code>. This board is generated from one status file in the repository.</p>
   </div>
 </section>
 
@@ -206,7 +206,8 @@
     <ol class="timeline">
 <!-- status:milestones:start -->
       <li><time datetime="2026-10-25">25 Oct 2026</time><div><h3>Website, survey and Canon moved to their own repository</h3><p>The website, the survey (now a page of the website, at /survey/), the Canon documents and the progress reports live in one branch of the Dhar-website-and-docs repository, served from Render at https://dhar.onrender.com instead of GitHub Pages. This replaces the GitHub Pages step in Progress Report 001. The survey saves answers in a Supabase database; its table rules were checked on PostgreSQL (36 checks) and the page against an imitation of the service, but not yet against the live project.</p></div></li>
-      <li><time datetime="2026-10-24">24 Oct 2026</time><div><h3><code>gen(...)</code> is the print function</h3><p>Printing no longer needs a buffer and a raw system call: <code>gen("text")</code>, <code>gen(42)</code> and <code>gen(name)</code> write a string, a number or a variable, for variables declared with a type and for ones whose type was inferred (<code>lock x = 5</code>). <code>gen</code> is strict: parentheses, exactly one argument, and a name that is an <code>i32</code>, <code>str</code> or <code>bool</code>. While testing it, a global <code>flux g: i32 = 77</code> turned out to be silently ignored (the variable stayed 0); the compiler now rejects it with a message, and it is listed as a limit, not fixed. 106 tests pass on both targets; the new tests fail on the previous compiler.</p></div></li>
+      <li><time datetime="2026-10-25">25 Oct 2026</time><div><h3>Buffer address in <code>scan</code> fixed</h3><p>Checking the Stage 1 sources against the compiler turned up a wrong stack offset: for <code>scan</code> over a local buffer the compiler wrote the buffer's address as <code>rbp-4294967336</code> instead of <code>rbp-40</code>. <code>nasm</code> warned and cut the number down to the right value, so programs printed the right answer and nothing visibly failed. The compiler now writes the right offset; two new tests check the output and the assembly text, and the assembly test fails on the previous compiler. 108 tests pass on both targets.</p></div></li>
+      <li><time datetime="2026-10-24">24 Oct 2026</time><div><h3><code>gen(...)</code> is the print function</h3><p>Printing no longer needs a buffer and a raw system call: <code>gen("text")</code>, <code>gen(42)</code> and <code>gen(name)</code> write a string, a number or a variable, for variables declared with a type and for ones whose type was inferred (<code>lock x = 5</code>). <code>gen</code> is strict: parentheses, exactly one argument, and a name that is an <code>i32</code>, <code>str</code> or <code>bool</code>. While testing it, a global <code>flux g: i32 = 77</code> turned out to be silently ignored (the variable stayed 0); the compiler now rejects it with a message, and it is listed as a limit, not fixed. 108 tests pass on both targets; the new tests fail on the previous compiler.</p></div></li>
       <li><time datetime="2026-10-23">23 Oct 2026</time><div><h3>Negative literals in <code>give</code></h3><p>Checking the Stage 1 sources against the new compiler showed that <code>give -1</code> had always compiled as <code>give 0</code> (a silent miscompile) and that the first version of the <code>give</code> fix rejected it. It now returns the negative number, with 68 tests passing on both targets.</p></div></li>
       <li><time datetime="2026-10-22">22 Oct 2026</time><div><h3>Windows x64 target</h3><p>Stage 0 emits real Windows programs; unsupported targets are refused instead of silently producing Linux code. The battery grew to 64 tests and passes on both targets.</p></div></li>
       <li><time datetime="2026-10-22">22 Oct 2026</time><div><h3>Two Stage 0 bugs fixed</h3><p><code>give a + b</code> used to return only <code>a</code>; <code>gen("...")</code> used to write an extra zero byte. Both fixed, with 14 tests that fail on the old compiler.</p></div></li>
