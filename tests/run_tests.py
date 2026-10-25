@@ -263,7 +263,7 @@ def test_browser(axe):
                 pg.click("#panel-loop .copy")
                 try:
                     txt = pg.evaluate("navigator.clipboard.readText()")
-                    check(txt.startswith("task core():") and "Limit reached" in txt, "copy button puts the sample on the clipboard")
+                    check(txt.startswith("task core():") and "Passes: " in txt and "gen(counter)" in txt, "copy button puts the sample on the clipboard")
                 except Exception as e:
                     check(False, "copy button: clipboard unreadable (%s)" % e)
                 if axe and os.path.exists(axe):

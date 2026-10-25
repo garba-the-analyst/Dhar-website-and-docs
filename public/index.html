@@ -99,7 +99,7 @@
         <a class="btn" href="#language">Read the code</a>
         <!--survey-hero--><a class="btn quiet" href="survey/">Shape Dhar: take the survey</a><!--/survey-hero-->
       </div>
-      <p class="facts"><b>Stage 0</b> in NASM x86-64 &middot; <b>Linux x86-64</b> output, <b>Windows x64</b> in testing &middot; <b>MIT</b> licence &middot; status checked <b><!--asof-short-->23 Oct 2026<!--/asof-short--></b></p>
+      <p class="facts"><b>Stage 0</b> in NASM x86-64 &middot; <b>Linux x86-64</b> output, <b>Windows x64</b> in testing &middot; <b>MIT</b> licence &middot; status checked <b><!--asof-short-->25 Oct 2026<!--/asof-short--></b></p>
     </div>
   </div>
 </section>
@@ -123,12 +123,12 @@
       <li data-status="works">
         <span class="chip works">Works</span>
         <div><h3>Stage 0 compiler</h3>
-        <p><code>dharc</code> is written in NASM x86-64 assembly (nine modules, no libc). It reads a <code>.dhar</code> file and writes assembly; <code>nasm</code> and a linker turn that into a program. The conformance battery has 68 tests and all of them pass on both targets.</p></div>
+        <p><code>dharc</code> is written in NASM x86-64 assembly (nine modules, no libc). It reads a <code>.dhar</code> file and writes assembly; <code>nasm</code> and a linker turn that into a program. The conformance battery has 106 tests and all of them pass on both targets.</p></div>
       </li>
       <li data-status="works">
         <span class="chip works">Works</span>
         <div><h3>Native programs, no runtime</h3>
-        <p>Output is a small static program that talks to the operating system directly through <code>sys</code>. The examples below are about 9 KB each.</p></div>
+        <p>Output is a small static program that talks to the operating system directly: <code>gen</code> and <code>sys</code> both end in a system call, with no library between. The examples below are about 9 KB each.</p></div>
       </li>
       <li data-status="works">
         <span class="chip works">Works</span>
@@ -138,7 +138,7 @@
       <li data-status="partly">
         <span class="chip partly">Partly</span>
         <div><h3>The language itself</h3>
-        <p>A strict first subset: <code>i32</code>, <code>str</code>, <code>bool</code> and <code>raw[N]</code>; tasks with parameters; <code>give</code> with a value or one operation (<code>give a + b</code>); <code>when</code>/<code>shift</code>/<code>fallback</code>; loops; <code>sys</code> calls; layout-only <code>mold</code>. Anything outside the subset is rejected with a clear message.</p></div>
+        <p>A strict first subset: <code>i32</code>, <code>str</code>, <code>bool</code> and <code>raw[N]</code>; type inference from the first value (<code>lock x = 5</code>); tasks with parameters; <code>give</code> with a value or one operation (<code>give a + b</code>); <code>gen(...)</code> to print a string, a number or an <code>i32</code>, <code>str</code> or <code>bool</code> variable; <code>when</code>/<code>shift</code>/<code>fallback</code>; loops; <code>sys</code> calls; layout-only <code>mold</code>. Anything outside the subset is rejected with a clear message. Known limit: a global variable cannot have an initial value yet (assign it inside a task); the compiler says so instead of silently ignoring it.</p></div>
       </li>
       <li data-status="works">
         <span class="chip works">Works</span>
@@ -148,12 +148,12 @@
       <li data-status="partly">
         <span class="chip partly">Partly</span>
         <div><h3>Target: Windows x64</h3>
-        <p>Programs assemble as win64, link into a PE, and run correctly in a CPU emulator that checks the Windows calling rules; all 68 tests pass there. It has not been run on a real Windows machine yet, and <code>dharc</code> itself still runs only on Linux (on Windows, use WSL).</p></div>
+        <p>Programs assemble as win64, link into a PE, and run correctly in a CPU emulator that checks the Windows calling rules; all 106 tests pass there. It has not been run on a real Windows machine yet, and <code>dharc</code> itself still runs only on Linux (on Windows, use WSL).</p></div>
       </li>
       <li data-status="notyet">
         <span class="chip notyet">Not yet</span>
         <div><h3>Targets: ARM64, RISC-V, WebAssembly (WASI)</h3>
-        <p><code>dharc</code> refuses these with an error rather than producing the wrong output. They are planned as back ends of the Stage 1 compiler, on the machine-independent IR.</p></div>
+        <p><code>dharc</code> refuses these with an error rather than producing the wrong output. The author decided on 23 October 2026 to build them in Stage 0 itself (not postpone them to Stage 1); nothing of that is built yet, and each target is switched on only when the whole test battery passes on it. The Canon still says Stage 0 targets x86-64 only, so the decision needs Canon amendment A-2.</p></div>
       </li>
       <li data-status="designed">
         <span class="chip designed">Designed</span>
@@ -192,7 +192,7 @@
       </li>
 <!-- status:board:end -->
     </ul>
-    <p class="stamp">Checked <!--asof-long-->23 October 2026<!--/asof-long--> against <code>forge-of-dhar</code>, last code change <code><!--commit-forge-->36f91d2<!--/commit-forge--></code>, and <code>honing-dhar</code> at commit <code><!--commit-honing-->cfa336b<!--/commit-honing--></code>. This board is generated from one status file in the repository.</p>
+    <p class="stamp">Checked <!--asof-long-->25 October 2026<!--/asof-long--> against <code>forge-of-dhar</code>, last code change <code><!--commit-forge-->b4bfb21<!--/commit-forge--></code>, and <code>honing-dhar</code> at commit <code><!--commit-honing-->cfa336b<!--/commit-honing--></code>. This board is generated from one status file in the repository.</p>
   </div>
 </section>
 
@@ -205,6 +205,8 @@
     </div>
     <ol class="timeline">
 <!-- status:milestones:start -->
+      <li><time datetime="2026-10-25">25 Oct 2026</time><div><h3>Website, survey and Canon moved to their own repository</h3><p>The website, the survey (now a page of the website, at /survey/), the Canon documents and the progress reports live in one branch of the Dhar-website-and-docs repository, served from Render at https://dhar.onrender.com instead of GitHub Pages. This replaces the GitHub Pages step in Progress Report 001. The survey saves answers in a Supabase database; its table rules were checked on PostgreSQL (36 checks) and the page against an imitation of the service, but not yet against the live project.</p></div></li>
+      <li><time datetime="2026-10-24">24 Oct 2026</time><div><h3><code>gen(...)</code> is the print function</h3><p>Printing no longer needs a buffer and a raw system call: <code>gen("text")</code>, <code>gen(42)</code> and <code>gen(name)</code> write a string, a number or a variable, for variables declared with a type and for ones whose type was inferred (<code>lock x = 5</code>). <code>gen</code> is strict: parentheses, exactly one argument, and a name that is an <code>i32</code>, <code>str</code> or <code>bool</code>. While testing it, a global <code>flux g: i32 = 77</code> turned out to be silently ignored (the variable stayed 0); the compiler now rejects it with a message, and it is listed as a limit, not fixed. 106 tests pass on both targets; the new tests fail on the previous compiler.</p></div></li>
       <li><time datetime="2026-10-23">23 Oct 2026</time><div><h3>Negative literals in <code>give</code></h3><p>Checking the Stage 1 sources against the new compiler showed that <code>give -1</code> had always compiled as <code>give 0</code> (a silent miscompile) and that the first version of the <code>give</code> fix rejected it. It now returns the negative number, with 68 tests passing on both targets.</p></div></li>
       <li><time datetime="2026-10-22">22 Oct 2026</time><div><h3>Windows x64 target</h3><p>Stage 0 emits real Windows programs; unsupported targets are refused instead of silently producing Linux code. The battery grew to 64 tests and passes on both targets.</p></div></li>
       <li><time datetime="2026-10-22">22 Oct 2026</time><div><h3>Two Stage 0 bugs fixed</h3><p><code>give a + b</code> used to return only <code>a</code>; <code>gen("...")</code> used to write an extra zero byte. Both fixed, with 14 tests that fail on the old compiler.</p></div></li>
@@ -235,20 +237,20 @@
 
     <!-- ---- Loop ---- -->
     <div class="tab-panel" role="tabpanel" id="panel-loop" aria-labelledby="tab-loop">
-      <p class="tab-intro"><code>sys 1, 1, banner, 19</code> is the Linux <em>write</em> call: file 1 (standard output), the string, 19 bytes.</p>
+      <p class="tab-intro"><code>gen(...)</code> prints a string, a number or a variable. <code>banner</code> is written with its type, <code>counter</code> without one: its first value, <code>0</code>, makes it an <code>i32</code>. Under <code>gen</code> is the Linux <em>write</em> call, which is still there when you need it.</p>
       <div class="win cut">
         <div class="win-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="fname">core.dhar</span><button class="copy" type="button">Copy</button></div>
-<pre><code data-sample="core"><span class="k">task</span> core<span class="p">():</span>
+<pre><code data-sample="core"><span class="k">task</span> core<span class="p">(</span><span class="p">)</span><span class="p">:</span>
     <span class="k">lock</span> banner<span class="p">:</span> <span class="t">str</span> <span class="p">=</span> <span class="s">"System Initialized\n"</span>
-    <span class="k">flux</span> counter<span class="p">:</span> <span class="t">i32</span> <span class="p">=</span> <span class="n">0</span>
-    <span class="k">flux</span> buffer<span class="p">:</span> <span class="t">raw</span><span class="p">[</span><span class="n">256</span><span class="p">]</span>
+    <span class="k">flux</span> counter <span class="p">=</span> <span class="n">0</span>
 
     <span class="k">span</span> counter <span class="p">&lt;</span> <span class="n">3</span><span class="p">:</span>
-        <span class="t">sys</span> <span class="n">1</span><span class="p">,</span> <span class="n">1</span><span class="p">,</span> banner<span class="p">,</span> <span class="n">19</span>
+        <span class="t">gen</span><span class="p">(</span>banner<span class="p">)</span>
         counter <span class="p">=</span> counter <span class="p">+</span> <span class="n">1</span>
 
-    <span class="k">lock</span> done<span class="p">:</span> <span class="t">str</span> <span class="p">=</span> <span class="s">"Limit reached\n"</span>
-    <span class="t">sys</span> <span class="n">1</span><span class="p">,</span> <span class="n">1</span><span class="p">,</span> done<span class="p">,</span> <span class="n">14</span></code></pre>
+    <span class="t">gen</span><span class="p">(</span><span class="s">"Passes: "</span><span class="p">)</span>
+    <span class="t">gen</span><span class="p">(</span>counter<span class="p">)</span>
+    <span class="t">gen</span><span class="p">(</span><span class="s">"\n"</span><span class="p">)</span></code></pre>
       </div>
       <div class="run cut">
         <div class="run-head">terminal</div>
@@ -259,8 +261,8 @@
 <pre class="out" data-output="core">System Initialized
 System Initialized
 System Initialized
-Limit reached</pre>
-        <dl class="run-meta"><div><dt>program</dt><dd>9,200 bytes</dd></div><div><dt>exit status</dt><dd>0</dd></div></dl>
+Passes: 3</pre>
+        <dl class="run-meta"><div><dt>program</dt><dd>9,600 bytes</dd></div><div><dt>exit status</dt><dd>0</dd></div></dl>
       </div>
     </div>
 
@@ -269,18 +271,15 @@ Limit reached</pre>
       <p class="tab-intro"><code>when</code>, <code>shift</code> and <code>fallback</code> are if, else if and else. A task takes typed parameters and is called by name.</p>
       <div class="win cut">
         <div class="win-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="fname">branch.dhar</span><button class="copy" type="button">Copy</button></div>
-<pre><code data-sample="branch"><span class="k">task</span> classify<span class="p">(</span>v<span class="p">:</span> <span class="t">i32</span><span class="p">):</span>
+<pre><code data-sample="branch"><span class="k">task</span> classify<span class="p">(</span>v<span class="p">:</span> <span class="t">i32</span><span class="p">)</span><span class="p">:</span>
     <span class="k">when</span> v <span class="p">==</span> <span class="n">1</span><span class="p">:</span>
-        <span class="k">lock</span> a<span class="p">:</span> <span class="t">str</span> <span class="p">=</span> <span class="s">"nominal\n"</span>
-        <span class="t">sys</span> <span class="n">1</span><span class="p">,</span> <span class="n">1</span><span class="p">,</span> a<span class="p">,</span> <span class="n">8</span>
+        <span class="t">gen</span><span class="p">(</span><span class="s">"nominal\n"</span><span class="p">)</span>
     <span class="k">shift</span> v <span class="p">==</span> <span class="n">2</span><span class="p">:</span>
-        <span class="k">lock</span> b<span class="p">:</span> <span class="t">str</span> <span class="p">=</span> <span class="s">"degraded\n"</span>
-        <span class="t">sys</span> <span class="n">1</span><span class="p">,</span> <span class="n">1</span><span class="p">,</span> b<span class="p">,</span> <span class="n">9</span>
+        <span class="t">gen</span><span class="p">(</span><span class="s">"degraded\n"</span><span class="p">)</span>
     <span class="k">fallback</span><span class="p">:</span>
-        <span class="k">lock</span> c<span class="p">:</span> <span class="t">str</span> <span class="p">=</span> <span class="s">"unknown\n"</span>
-        <span class="t">sys</span> <span class="n">1</span><span class="p">,</span> <span class="n">1</span><span class="p">,</span> c<span class="p">,</span> <span class="n">8</span>
+        <span class="t">gen</span><span class="p">(</span><span class="s">"unknown\n"</span><span class="p">)</span>
 
-<span class="k">task</span> core<span class="p">():</span>
+<span class="k">task</span> core<span class="p">(</span><span class="p">)</span><span class="p">:</span>
     classify<span class="p">(</span><span class="n">1</span><span class="p">)</span>
     classify<span class="p">(</span><span class="n">2</span><span class="p">)</span>
     classify<span class="p">(</span><span class="n">7</span><span class="p">)</span></code></pre>
@@ -303,12 +302,11 @@ unknown</pre>
       <p class="tab-intro"><code>buf</code> holds four bytes and the index is 9. The program stops with a message and a non-zero exit status; the line after the write never runs.</p>
       <div class="win cut">
         <div class="win-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="fname">bounds.dhar</span><button class="copy" type="button">Copy</button></div>
-<pre><code data-sample="bounds"><span class="k">task</span> core<span class="p">():</span>
+<pre><code data-sample="bounds"><span class="k">task</span> core<span class="p">(</span><span class="p">)</span><span class="p">:</span>
     <span class="k">flux</span> buf<span class="p">:</span> <span class="t">raw</span><span class="p">[</span><span class="n">4</span><span class="p">]</span>
-    <span class="k">flux</span> i<span class="p">:</span> <span class="t">i32</span> <span class="p">=</span> <span class="n">9</span>
+    <span class="k">flux</span> i <span class="p">=</span> <span class="n">9</span>
     buf<span class="p">[</span>i<span class="p">]</span> <span class="p">=</span> <span class="n">1</span>
-    <span class="k">lock</span> ok<span class="p">:</span> <span class="t">str</span> <span class="p">=</span> <span class="s">"unreachable\n"</span>
-    <span class="t">sys</span> <span class="n">1</span><span class="p">,</span> <span class="n">1</span><span class="p">,</span> ok<span class="p">,</span> <span class="n">12</span></code></pre>
+    <span class="t">gen</span><span class="p">(</span><span class="s">"unreachable\n"</span><span class="p">)</span></code></pre>
       </div>
       <div class="run cut">
         <div class="run-head">terminal</div>
@@ -333,6 +331,7 @@ unknown</pre>
             <tr><td><span class="k">span</span> / <span class="k">cycle</span></td><td>Loop while a test holds / loop until <span class="k">escape</span></td><td>while / loop</td></tr>
             <tr><td><span class="k">scan</span> x in buf</td><td>Walk the bytes of a buffer</td><td>for each</td></tr>
             <tr><td><span class="k">escape</span> / <span class="k">skip</span></td><td>Leave the loop / next round</td><td>break / continue</td></tr>
+            <tr><td><span class="t">gen</span></td><td>Print a string, a number or a variable</td><td>print, console.log</td></tr>
             <tr><td><span class="t">sys</span> / <span class="t">sysret</span></td><td>Call the kernel / read its return value</td><td>syscall</td></tr>
             <tr><td><span class="t">peek</span> / <span class="t">poke</span></td><td>Read / write one byte of a buffer</td><td>load / store</td></tr>
             <tr><td><span class="k">mold</span></td><td>A data layout (size is recorded; no fields yet)</td><td>struct</td></tr>
