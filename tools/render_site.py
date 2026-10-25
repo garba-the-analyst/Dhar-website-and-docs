@@ -30,6 +30,7 @@ from datetime import date
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAGE = os.path.join(REPO, "public", "index.html")
+SURVEY_PAGE = os.path.join(REPO, "public", "survey", "index.html")
 LABEL = {"works": "Works", "partly": "Partly", "designed": "Designed", "notyet": "Not yet"}
 DOCS_URL = "https://github.com/garba-the-analyst/dhar-website-and-docs"
 
@@ -136,20 +137,12 @@ def bench_json(bench):
 
 
 def survey_pieces(site):
-    """The survey lives on its own host. Until its address is set in data/site.json, no link is shown
-    (a button that goes nowhere would be dishonest)."""
-    url = (site.get("survey_url") or "").strip()
-    if url:
-        u = html.escape(url, quote=True)
-        return {
-            "survey-hero": '<a class="btn quiet" href="%s" rel="noopener">Shape Dhar: take the survey</a>' % u,
-            "survey-call": '<a class="btn primary" href="%s" rel="noopener">Take the survey</a>' % u,
-            "survey-foot": '<li><a href="%s" rel="noopener">The survey</a></li>' % u,
-        }
+    """The survey is a page of this website (public/survey/), served from the same address, so the links
+    are relative and always shown. There is no separate host and no setting to leave empty."""
     return {
-        "survey-hero": "",
-        "survey-call": '<p class="note" style="margin:0">The survey is moving to a new address. The link will be here soon.</p>',
-        "survey-foot": "",
+        "survey-hero": '<a class="btn quiet" href="survey/">Shape Dhar: take the survey</a>',
+        "survey-call": '<a class="btn primary" href="survey/">Take the survey</a>',
+        "survey-foot": '<li><a href="survey/">The survey</a></li>',
     }
 
 
@@ -159,6 +152,15 @@ def meta_block(site):
         return ('<meta property="og:image" content="%s/assets/brand/og-image.jpg">\n<meta property="og:url" content="%s/">'
                 % (html.escape(base, quote=True), html.escape(base, quote=True)))
     return '<meta property="og:image" content="assets/brand/og-image.jpg">'
+
+
+def survey_meta_block(site):
+    """The same, for the survey page (public/survey/index.html): link previews need absolute addresses."""
+    base = (site.get("site_url") or "").strip().rstrip("/")
+    if base:
+        return ('<meta property="og:image" content="%s/assets/brand/og-image.jpg">\n<meta property="og:url" content="%s/survey/">'
+                % (html.escape(base, quote=True), html.escape(base, quote=True)))
+    return '<meta property="og:image" content="../assets/brand/og-image.jpg">'
 
 
 def replace_block(text, name, body):
@@ -201,20 +203,26 @@ def main():
     ap.add_argument("--check", action="store_true")
     a = ap.parse_args()
     st, site, src = jload("data", "status.json"), jload("data", "site.json"), jload("data", "SOURCE.json")
-    old = open(PAGE, encoding="utf-8").read()
-    new = render(old, st, load_bench(), site, src)
-    if a.check:
-        if old != new:
-            print("public/index.html is out of date. Run: python3 tools/render_site.py")
-            return 1
-        print("public/index.html is up to date")
-        return 0
-    if old != new:
-        open(PAGE, "w", encoding="utf-8").write(new)
-        print("updated public/index.html")
-    else:
-        print("public/index.html already current")
-    return 0
+    pages = [
+        (PAGE, "public/index.html", lambda t: render(t, st, load_bench(), site, src)),
+        (SURVEY_PAGE, "public/survey/index.html", lambda t: replace_block(t, "site:meta", survey_meta_block(site))),
+    ]
+    status = 0
+    for path, name, make in pages:
+        old = open(path, encoding="utf-8").read()
+        new = make(old)
+        if a.check:
+            if old != new:
+                print("%s is out of date. Run: python3 tools/render_site.py" % name)
+                status = 1
+            else:
+                print("%s is up to date" % name)
+        elif old != new:
+            open(path, "w", encoding="utf-8").write(new)
+            print("updated %s" % name)
+        else:
+            print("%s already current" % name)
+    return status
 
 
 if __name__ == "__main__":

@@ -45,10 +45,13 @@
   var TEXT_W = CONTENT_W - GUTTER;
 
   /* ---- look ------------------------------------------------------------------------ */
-  var INK = [0.09, 0.11, 0.14];
-  var GREY = [0.39, 0.42, 0.46];
-  var RULE = [0.80, 0.82, 0.85];
-  var TEMPER = [[0.831, 0.671, 0.271], [0.678, 0.404, 0.149], [0.424, 0.275, 0.647], [0.165, 0.353, 0.651]];
+  /* Colours: the six brand colours only (docs/BRAND.md), written as PDF RGB (hex / 255). The page is paper,
+     so the paper stays white, the ink is Forge Black #0B0B0D, grey text and rules are Tempered Steel #4B5563,
+     and the four accent bars are Molten Ember #FF5C00, Hot Copper #C2410C, Tempered Steel and Precision Cyan #22D3EE. */
+  var INK = [0.043, 0.043, 0.051];
+  var GREY = [0.294, 0.333, 0.388];
+  var RULE = [0.294, 0.333, 0.388];
+  var TEMPER = [[1, 0.361, 0], [0.761, 0.255, 0.047], [0.294, 0.333, 0.388], [0.133, 0.827, 0.933]];
 
   var SIZE = { title: 25, subtitle: 11, heading: 13, question: 10.5, hint: 8.8, answer: 9.8, meta: 9.6, small: 8 };
   var LEAD = { title: 30, subtitle: 15, heading: 18, question: 14.4, hint: 12, answer: 13.8, meta: 14.5, small: 11 };

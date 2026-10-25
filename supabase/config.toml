@@ -1,0 +1,12 @@
+# Supabase project settings for the Dhar website.
+#
+# The website's database lives in the Supabase project whose address is in public/assets/dhar-db.js.
+# The Supabase GitHub integration (Project settings > Integrations > GitHub) reads this folder from the
+# repository root and runs every file in supabase/migrations/ that has not been run yet, when a commit
+# reaches the branch it is set to deploy ("main").
+#
+# This file holds no secrets and must never hold any. The database password, and any "secret" or
+# "service_role" key, belong only in the Supabase dashboard.
+
+[db]
+major_version = 17

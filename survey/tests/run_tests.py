@@ -13,7 +13,7 @@ Chromium exactly as a respondent would (clicks, typing, keyboard), and checks:
   - drafts are saved on the device, restored on reload, and can be cleared
   - the page makes no request to any other site and raises no JavaScript errors
   - the page never scrolls sideways at phone, tablet and desktop widths
-  - accessibility (axe-core) in light and dark, if axe.min.js is available
+  - accessibility (axe-core) on the dark page, if axe.min.js is available
   - the parser in tools/parse_responses.py can read what the page produces
   - the relay (direct delivery): the REAL relay/Code.gs runs behind relay/test/mock_apps_script.js, a local
     server that behaves like an Apps Script web app (redirect to a second origin, CORS on the answer, no
@@ -39,6 +39,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import socketserver
 import subprocess
 import sys
@@ -53,13 +54,16 @@ import urllib.request
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(HERE)                          # survey/ : the survey's sources, tests, relay and tools
+REPO = os.path.dirname(ROOT)                          # the repository root
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--site", default=ROOT, help="folder that contains index.html")
+ap.add_argument("--site", default=os.path.join(REPO, "public"), help="the website folder (public/); the survey is its survey/ page")
+ap.add_argument("--page", default="/survey/index.html", help="path of the survey page inside the site")
 ap.add_argument("--shots", default=None, help="folder for screenshots (optional)")
 ap.add_argument("--chromium", default=os.environ.get("CHROMIUM"), help="path to a Chromium/Chrome binary")
 ap.add_argument("--axe", default=os.environ.get("AXE_JS"), help="path to axe.min.js")
+ap.add_argument("--shard", default=None, help="N/M: run only every M-th test, starting at the N-th (0-based), so the suite can run in M parallel processes")
 ap.add_argument("--only", default=None, help="run only the tests whose name contains this text (for example: relay)")
 ARGS = ap.parse_args()
 
@@ -114,7 +118,7 @@ STEP_TITLE = {"prof": "Teaching", "researcher": "Research", "student": "Learning
 class Run:
     """One browser context + page, with the error and request watchers attached."""
 
-    def __init__(self, browser, base, viewport=None, scheme="light", ua=None, permissions=True):
+    def __init__(self, browser, base, viewport=None, scheme="light", ua=None, permissions=True, db=None):
         opts = {"viewport": viewport or {"width": 1280, "height": 900}, "color_scheme": scheme}
         if ua:
             opts["user_agent"] = ua
@@ -129,9 +133,16 @@ class Run:
         self.page.on("pageerror", lambda e: self.errors.append("pageerror: " + str(e)))
         self.page.on("request", lambda r: self.external.append(r.url) if not (r.url.startswith(base) or r.url.startswith("data:") or r.url.startswith("blob:")) else None)
         self.page.add_init_script(MAILTO_HOOK)
+        # The page saves answers in the website's database when one is configured (assets/dhar-db.js).
+        # Unless a test asks for the database (db={"url": ..., "key": ...}), it is switched off, so the
+        # email route and the relay route are tested on their own and nothing ever reaches the real one.
+        # db="default" leaves the page's own configuration alone (for the test of what is really shipped).
+        if db != "default":
+            cfg = {"url": "", "key": ""} if db is None else db
+            self.page.add_init_script("window.DHAR_DB_CONFIG = " + json.dumps(cfg) + ";")
 
-    def open(self, path="/index.html"):
-        self.page.goto(self.base + path)
+    def open(self, path=None):
+        self.page.goto(self.base + (path or ARGS.page))
         self.page.wait_for_selector("html[data-ready=true]")
         return self
 
@@ -279,10 +290,10 @@ def t_first_load(env):
     check(r.title() == "Start", "first step is 'Start'")
     check(r.page.is_hidden(".nav button:has-text('Back')"), "no Back button on the first step")
     check(r.page.locator("#in-ROLE-prof").count() == 1 and r.page.locator("input[name=ROLE]").count() == 4, "four role options are shown")
-    check(r.page.evaluate("getComputedStyle(document.querySelector('.hero .code')).display") != "none", "code sample is shown on desktop")
+    check(r.page.evaluate("getComputedStyle(document.querySelector('.sv-hero .code')).display") != "none", "code sample is shown on desktop")
     r.close()
     m = Run(env.browser, env.base, viewport={"width": 375, "height": 780}).open()
-    check(m.page.evaluate("getComputedStyle(document.querySelector('.hero .code')).display") == "none", "code sample is hidden on phones")
+    check(m.page.evaluate("getComputedStyle(document.querySelector('.sv-hero .code')).display") == "none", "code sample is hidden on phones")
     check(m.errors == [] and m.external == [], f"no errors / external requests on phone load: {m.errors} {m.external}")
     m.close()
 
@@ -698,7 +709,7 @@ def t_error_states_screenshots(env):
 @test
 def t_file_protocol(env):
     r = Run(env.browser, env.base, permissions=False)
-    r.page.goto("file://" + os.path.join(os.path.abspath(ARGS.site), "index.html"))
+    r.page.goto("file://" + os.path.join(os.path.abspath(ARGS.site), ARGS.page.lstrip("/")))
     r.page.wait_for_selector("html[data-ready=true]")
     r.pick_roles(["student"]); r.next()
     check(r.title() == "About you", "page works when index.html is opened straight from disk")
@@ -765,13 +776,59 @@ def t_parser_round_trip(env):
 
 
 @test
+def t_parser_reads_a_database_export(env):
+    """An export of the survey_responses table (CSV or JSON from Supabase) reads exactly like the emailed text."""
+    parser = os.path.join(ROOT, "tools", "parse_responses.py")
+    r = Run(env.browser, env.base).open()
+    r.pick_roles(["student", "dev"])
+    r.walk(overrides={"about": about_step(areas=["security"])}, long_text=60)
+    rep = r.report()
+    r.close()
+    import csv
+    rid = re.search(r"Response ID: (\S+)", rep).group(1)
+    other = rep.replace(rid, rid[:-6] + "zzzzzz")
+    with tempfile.TemporaryDirectory() as d:
+        def parse(path):
+            out = os.path.join(d, "out.csv")
+            res = subprocess.run([sys.executable, "-I", parser, path, "-o", out], capture_output=True, text=True)
+            return res, list(csv.DictReader(open(out, encoding="utf-8"))) if res.returncode == 0 else []
+        txt = os.path.join(d, "mail.txt")
+        open(txt, "w", encoding="utf-8").write(rep + "\n\n" + other + "\n")
+        _res, want = parse(txt)
+        check(len(want) == 2, f"the text file gives two responses ({len(want)})")
+        cols = ["id", "client_id", "survey_version", "roles", "answers", "report_text", "received_at"]
+        rows = [{"id": 1, "client_id": rid, "survey_version": "1.0", "roles": '{student,dev}', "answers": "{}", "report_text": rep, "received_at": "2026-10-24 16:00:00+00"},
+                {"id": 2, "client_id": rid[:-6] + "zzzzzz", "survey_version": "1.0", "roles": '{student,dev}', "answers": "{}", "report_text": other, "received_at": "2026-10-24 16:01:00+00"}]
+        path = os.path.join(d, "survey_responses.csv")
+        with open(path, "w", encoding="utf-8-sig", newline="") as fh:       # Supabase's export has a byte-order mark
+            w = csv.DictWriter(fh, fieldnames=cols)
+            w.writeheader()
+            w.writerows(rows)
+        res, got = parse(path)
+        check(res.returncode == 0 and len(got) == 2, f"the CSV export gives two responses: {res.stderr.strip()[-200:]}")
+        strip = lambda rs: [{k: v for k, v in x.items() if k != "source"} for x in rs]
+        check(strip(got) == strip(want), "and they are identical to the ones read from the emailed text")
+        path = os.path.join(d, "survey_responses.json")
+        json.dump(rows, open(path, "w", encoding="utf-8"))
+        res, got = parse(path)
+        check(res.returncode == 0 and strip(got) == strip(want), "the JSON export reads the same")
+        json.dump({"data": rows}, open(path, "w", encoding="utf-8"))
+        res, got = parse(path)
+        check(res.returncode == 0 and strip(got) == strip(want), "a JSON export wrapped in {data: [...]} reads the same")
+        # an export that contains the same response as an email is merged, not counted twice
+        res = subprocess.run([sys.executable, "-I", parser, txt, os.path.join(d, "survey_responses.json"), "-o", os.path.join(d, "both.csv")], capture_output=True, text=True)
+        both = list(csv.DictReader(open(os.path.join(d, "both.csv"), encoding="utf-8")))
+        check(len(both) == 2 and "2 duplicates merged" in res.stderr, f"a response that arrived by email and in the database is one row: {res.stderr.strip()[-120:]}")
+
+
+@test
 def t_accessibility(env):
     axe = ARGS.axe
     if not axe or not os.path.exists(axe):
         print("    (skipped: pass --axe /path/to/axe.min.js, from `npm pack axe-core`)")
         return
     src = open(axe, encoding="utf-8").read()
-    for scheme in ("light", "dark"):
+    for scheme in ("dark",):                      # the website is dark only
         r = Run(env.browser, env.base, scheme=scheme, permissions=True).open()
         r.page.add_script_tag(content=src)
         seen = []
@@ -1076,7 +1133,7 @@ def t_pdf_can_be_switched_off(env):
 @test
 def t_pdf_from_disk(env):
     r = Run(env.browser, env.base, permissions=False)
-    r.page.goto("file://" + os.path.join(os.path.abspath(ARGS.site), "index.html"))
+    r.page.goto("file://" + os.path.join(os.path.abspath(ARGS.site), ARGS.page.lstrip("/")))
     r.page.wait_for_selector("html[data-ready=true]")
     r.pick_roles(["student"])
     r.walk(overrides={"about": about_step()})
@@ -1606,7 +1663,7 @@ def t_relay_wording_and_layout(env):
 def t_relay_check_page(env):
     relay_reset()
     r = relay_run(env, permissions=False)
-    r.page.goto(env.base + "/relay-check.html")
+    r.page.goto(env.base + "/survey/relay-check.html")
     r.page.wait_for_selector("#btn-ping")
     check(RELAY["url"] in r.page.inner_text("#config-status"), "the check page shows the configured relay address")
     r.page.click("#btn-ping")
@@ -1624,7 +1681,7 @@ def t_relay_check_page(env):
     check("Who has access" in r.page.inner_text("#ping-verdict") or "Anyone" in r.page.inner_text("#ping-verdict"), "an unreadable relay is explained, with the likely causes")
     r.close()
     r = Run(env.browser, env.base, permissions=False)
-    r.page.goto(env.base + "/relay-check.html")
+    r.page.goto(env.base + "/survey/relay-check.html")
     r.page.click("#btn-test")
     check("relayUrl is empty" in r.page.inner_text("#test-verdict"), "with no relayUrl the page says what to do")
     r.close()
@@ -1634,10 +1691,447 @@ class Env:
     pass
 
 
+# --------------------------------------------------------------------------- the database (direct delivery)
+#
+# The shipped page saves a finished response in the website's Supabase database (assets/dhar-db.js). These
+# tests point the page at a local stand-in for the part of PostgREST (Supabase's web interface to the
+# database) that the page uses: POST /rest/v1/survey_responses with an "apikey" header; 201 with no body
+# when stored; 409 with {"code": "23505"} when the reference was stored before; 4xx/5xx with a JSON error
+# otherwise; CORS headers on every answer, and an answer to the pre-flight request. The stand-in is NOT
+# Supabase: what the real database accepts is checked separately, against PostgreSQL itself, by
+# supabase/tests/verify_migrations.mjs. What the page does with each kind of answer is checked here.
+
+DB = {}
+DB_KEY = "sb_publishable_TESTKEY00000000000000000000"
+SUPABASE_URL = "https://ctpjbmolgvkagdbafsvh.supabase.co"
+
+
+class _DbState:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.reset()
+
+    def reset(self):
+        self.rows, self.log = [], []
+        self.mode = {}            # status (int) + code + message: answer every POST with that error;
+                                  # drop_after_store / drop: that many next POSTs lose the connection
+
+
+STATE = _DbState()
+
+
+class _DbHandler(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def _cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "apikey, content-type, prefer, authorization, x-client-info")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+
+    def _send(self, status, body=None):
+        data = b"" if body is None else json.dumps(body).encode()
+        self.send_response(status)
+        self._cors()
+        if body is not None:
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _drop(self):
+        self.close_connection = True
+        try:
+            self.connection.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def do_OPTIONS(self):
+        with STATE.lock:
+            STATE.log.append({"method": "OPTIONS", "path": self.path})
+        self.send_response(204)
+        self._cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_GET(self):
+        with STATE.lock:
+            if self.path == "/__rows":
+                return self._send(200, STATE.rows)
+            if self.path == "/__log":
+                return self._send(200, STATE.log)
+        self._send(404, {"message": "not found"})
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b""
+        if self.path == "/__reset":
+            STATE.reset()
+            return self._send(200, {"ok": True})
+        if self.path == "/__mode":
+            with STATE.lock:
+                STATE.mode = json.loads(raw or b"{}")
+            return self._send(200, {"ok": True})
+        with STATE.lock:
+            entry = {"method": "POST", "path": self.path, "apikey": self.headers.get("apikey"),
+                     "authorization": self.headers.get("Authorization"), "prefer": self.headers.get("Prefer"),
+                     "type": self.headers.get("Content-Type"), "cookie": self.headers.get("Cookie"),
+                     "referer": self.headers.get("Referer"), "raw": raw.decode("utf-8", "replace")}
+            STATE.log.append(entry)
+            mode = STATE.mode
+            if self.path != "/rest/v1/survey_responses":
+                return self._send(404, {"code": "PGRST125", "message": "Invalid path specified in request URL"})
+            if self.headers.get("apikey") != DB_KEY:
+                return self._send(401, {"message": "Invalid API key", "hint": "Double check your Supabase `anon` or `service_role` API key."})
+            if mode.get("drop"):
+                mode["drop"] -= 1
+                return self._drop()
+            try:
+                row = json.loads(raw)
+            except ValueError:
+                return self._send(400, {"code": "PGRST102", "message": "Empty or invalid json"})
+            stored_before = any(r["client_id"] == row.get("client_id") for r in STATE.rows)
+            if mode.get("drop_after_store"):
+                mode["drop_after_store"] -= 1
+                if not stored_before:
+                    STATE.rows.append(row)
+                return self._drop()
+            if mode.get("status"):
+                return self._send(mode["status"], {"code": mode.get("code", "XX000"), "message": mode.get("message", "mock error")})
+            if stored_before:
+                return self._send(409, {"code": "23505", "details": "Key (client_id)=(" + row.get("client_id", "") + ") already exists.",
+                                        "hint": None, "message": 'duplicate key value violates unique constraint "survey_responses_client_id_key"'})
+            STATE.rows.append(row)
+            return self._send(201)
+
+
+class _QuietServer(socketserver.ThreadingTCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def handle_error(self, request, client_address):
+        pass
+
+
+def start_db():
+    server = _QuietServer(("127.0.0.1", 0), _DbHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    DB.update(server=server, origin=f"http://127.0.0.1:{server.server_address[1]}")
+    return server
+
+
+def db_call(path, data=None):
+    req = urllib.request.Request(DB["origin"] + path, data=None if data is None else json.dumps(data).encode(),
+                                 method="GET" if data is None else "POST")
+    with urllib.request.urlopen(req, timeout=10) as res:
+        return json.loads(res.read().decode())
+
+
+def db_reset():
+    db_call("/__reset", {})
+
+
+def db_mode(**mode):
+    db_call("/__mode", mode)
+
+
+def db_rows():
+    return db_call("/__rows")
+
+
+def db_posts():
+    return [l for l in db_call("/__log") if l["method"] == "POST" and l["path"].startswith("/rest/")]
+
+
+def db_run(env, url=None, key=None, **run_kwargs):
+    """A Run whose page is configured to save into the stand-in database."""
+    return Run(env.browser, env.base, db={"url": url or DB["origin"], "key": key or DB_KEY}, **run_kwargs)
+
+
+def only_db_traffic(r):
+    return [u for u in r.external if not u.startswith(DB["origin"])]
+
+
+def db_row_for(r):
+    rows = db_rows()
+    rid = re.search(r"Response ID: (dhar-[0-9]{8}-[0-9]{6}-[a-z0-9]{6})", r.report()).group(1)
+    return rid, [x for x in rows if x["client_id"] == rid]
+
+
+@test
+def t_db_happy_path(env):
+    db_reset()
+    r = db_run(env)
+    downloads = []
+    r.page.on("download", lambda d: downloads.append(d.suggested_filename))
+    relay_walk(r)
+    check(r.page.inner_text("#btn-send") in ("Preparing your PDF...", "Send my answers"), "the main button is 'Send my answers'")
+    check(r.page.locator("#btn-email").count() == 1, "the email route is still offered next to it")
+    review = r.page.inner_text("#step-review")
+    check("database" in review and "Supabase" in review and "encrypted" in review, "the review step says where the answers go")
+    check("Google" not in review, "and does not mention the Google relay")
+    wait_relay_ready(r)
+    rep = r.report()
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "the confirmation says the answers were sent")
+    check("received and saved" in r.page.inner_text("#sent"), "it says they were received and saved (not emailed)")
+    check(r.page.inner_text("#btn-send") == "Sent" and r.page.is_disabled("#btn-send") and r.page.is_disabled("#btn-email"), "both send buttons are disabled afterwards")
+
+    rid, mine = db_row_for(r)
+    rows = db_rows()
+    check(len(rows) == 1 and len(mine) == 1, f"exactly one row was stored, under the reference the page showed ({len(rows)})")
+    row = mine[0]
+    check(set(row) == {"client_id", "survey_version", "roles", "answers", "report_text"}, f"the row has exactly the table's writable columns: {sorted(row)}")
+    check(row["survey_version"] == "1.0", f"survey_version: {row['survey_version']!r}")
+    check(row["roles"] == ["student", "dev"], f"roles: {row['roles']!r}")
+    check(row["report_text"] == rep, "report_text is exactly the report shown on the review step")
+    check(isinstance(row["answers"], dict) and row["answers"], "answers is a non-empty object")
+    codes = [c for c, _ in report_blocks(rep)]
+    got = sorted(k for k in row["answers"] if "#" not in k)
+    check(set(got) == set(codes) - {"ROLE"} or set(got) == set(codes), f"the answers carry the same question codes as the report (answers {got}, report {codes})")
+    check("ada.obi@example.com" in json.dumps(row["answers"]), "the contact the respondent gave is in the answers")
+    check(rid in r.page.inner_text("#sent"), "the confirmation shows the reference number")
+    check("removed from this device" in r.page.inner_text("#sent"), "the confirmation says the draft was removed")
+    check(r.page.evaluate("Object.keys(localStorage).filter(k => k.indexOf('dhar-survey') === 0)") == [], "the saved draft is gone from this device")
+
+    posts = db_posts()
+    check(len(posts) == 1, f"one POST ({len(posts)})")
+    p0 = posts[0]
+    check(p0["path"] == "/rest/v1/survey_responses", f"to the table's address with no query string: {p0['path']}")
+    check(p0["apikey"] == DB_KEY and not p0["authorization"], "the public key is sent as 'apikey' and nothing else is used for sign-in")
+    check((p0["type"] or "").startswith("application/json") and p0["prefer"] == "return=minimal", f"JSON, asking for no rows back: {p0['type']} / {p0['prefer']}")
+    check(not p0["cookie"] and not p0["referer"], "no cookies and no referrer were sent")
+    check(only_db_traffic(r) == [], f"the page talked to nobody but the database: {only_db_traffic(r)}")
+    check(len(downloads) == 0, f"nothing was downloaded until the respondent asked for their copy ({downloads})")
+    with tempfile.TemporaryDirectory() as folder:
+        with r.page.expect_download() as dl:
+            r.page.click("#sent button:has-text('Download my copy (PDF)')")
+        mine_pdf = os.path.join(folder, "mine.pdf")
+        dl.value.save_as(mine_pdf)
+        check(open(mine_pdf, "rb").read()[:5] == b"%PDF-", "the respondent can still keep their PDF copy")
+    check(r.errors == [], f"no console errors: {r.errors}")
+    r.close()
+
+
+@test
+def t_db_hidden_answers_are_not_sent(env):
+    db_reset()
+    r = db_run(env).open()
+    r.pick_roles(["prof", "student"])
+    titles = r.walk(overrides={"about": about_step()}, only_required=False)
+    for _ in range(len(titles) - 1):
+        r.back()
+    r.page.uncheck("#in-ROLE-student")
+    r.walk()
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "sent")
+    rows = db_rows()
+    check(len(rows) == 1, f"one row ({len(rows)})")
+    row = rows[0]
+    check(row["roles"] == ["prof"], f"roles follow the ticks: {row['roles']!r}")
+    check([k for k in row["answers"] if re.match(r"^S\d", k)] == [], f"answers to the hidden student questions were not sent: {[k for k in row['answers'] if re.match(r'^S', k)]}")
+    check(any(re.match(r"^P\d", k) for k in row["answers"]), "answers to the academic questions were sent")
+    check("[S1]" not in row["report_text"], "nor are they in the text")
+    r.close()
+
+
+@test
+def t_db_a_dropped_connection_is_retried_and_stored_once(env):
+    """The row reaches the database but the answer is lost: the page cannot know, retries, is told 'already
+    there' (409 / 23505), and treats that as success. One row, never two."""
+    db_reset()
+    db_mode(drop_after_store=1)
+    r = db_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "the page retried and reports success")
+    check(len(db_posts()) == 2, f"two attempts ({len(db_posts())})")
+    check(len(db_rows()) == 1, f"one row only ({len(db_rows())})")
+    check("already arrived" in r.page.inner_text("#sent"), "the confirmation says the first attempt had already arrived")
+    r.close()
+
+
+@test
+def t_db_a_connection_dropped_before_storing_is_retried(env):
+    db_reset()
+    db_mode(drop=1)
+    r = db_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "the retry stored the response")
+    check(len(db_posts()) == 2 and len(db_rows()) == 1, f"two attempts, one row ({len(db_posts())}, {len(db_rows())})")
+    check("already arrived" not in r.page.inner_text("#sent"), "no 'already arrived' note, because it had not")
+    r.close()
+
+
+@test
+def t_db_a_rejected_response_goes_to_email_without_retry(env):
+    db_reset()
+    db_mode(status=400, code="23514", message='new row for relation "survey_responses" violates check constraint')
+    r = db_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers have not been sent yet" and "(database)" in r.page.inner_text("#sent"), "the refusal is reported, not hidden")
+    check(r.page.locator("#sent button:has-text('Try sending again')").count() == 0, "no pointless retry button")
+    link = r.page.locator("#sent a:has-text('Open my email app')")
+    check(link.count() == 1 and link.get_attribute("href").startswith("mailto:garbaabdullahi344@gmail.com?subject="), "a ready-addressed email is offered")
+    check(db_rows() == [] and len(db_posts()) == 1, "nothing was stored, and the page did not hammer the database")
+    check(r.page.evaluate("Object.keys(localStorage).filter(k => k.indexOf('dhar-survey') === 0)") != [], "the draft was NOT cleared")
+    link.click()
+    r.page.wait_for_timeout(500)
+    check(r.mailto() is not None, "pressing it opens the email app")
+    r.close()
+
+
+@test
+def t_db_busy_database_can_be_retried(env):
+    db_reset()
+    db_mode(status=429, code="over_request_rate_limit", message="Too many requests")
+    r = db_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers have not been sent yet" and "busy" in r.page.inner_text("#sent"), "a rate limit is described as busy")
+    check(r.page.locator("#sent button:has-text('Try sending again')").count() == 1, "a retry button is offered")
+    db_mode()
+    r.page.click("#sent button:has-text('Try sending again')")
+    check(panel_title(r) == "Your answers were sent", "the retry succeeded once the database was available")
+    check(len(db_rows()) == 1, f"one row ({len(db_rows())})")
+    r.close()
+
+
+@test
+def t_db_server_error_can_be_retried(env):
+    db_reset()
+    db_mode(status=503, code="PGRST000", message="Could not connect to the database")
+    r = db_run(env)
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers have not been sent yet" and r.page.locator("#sent button:has-text('Try sending again')").count() == 1, "a 503 offers email and a retry")
+    check(db_rows() == [], "nothing stored")
+    r.close()
+
+
+@test
+def t_db_wrong_key_goes_to_email(env):
+    db_reset()
+    r = db_run(env, key="sb_publishable_WRONG")
+    relay_walk(r)
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers have not been sent yet", "a key the database refuses leads to the email route")
+    check(r.page.locator("#sent a:has-text('Open my email app')").count() == 1 and db_rows() == [], "email offered, nothing stored")
+    r.close()
+
+
+@test
+def t_db_unreachable_database(env):
+    db_reset()
+    r = db_run(env, url="http://127.0.0.1:9")            # nothing listens on port 9
+    relay_walk(r)
+    wait_relay_ready(r)
+    t0 = time.time()
+    r.page.click("#btn-send")
+    check(panel_title(r) == "We could not confirm that your answers arrived", "no connection at all leads to the email route")
+    check(time.time() - t0 < 15, f"it gives up quickly ({time.time() - t0:.1f} s)")
+    check(r.page.locator("#sent a:has-text('Open my email app')").count() == 1 and r.page.locator("#sent button:has-text('Try sending again')").count() == 1, "email and retry are offered")
+    r.close()
+
+
+@test
+def t_db_email_route_by_choice(env):
+    db_reset()
+    r = db_run(env)
+    relay_walk(r)
+    wait_relay_ready(r, label="Send my answers")
+    r.page.click("#btn-email")
+    r.page.wait_for_selector("#sent:not([hidden])")
+    check(r.mailto() is not None and db_posts() == [] and db_rows() == [], "the email route opens the mail app and writes nothing to the database")
+    r.close()
+
+
+@test
+def t_db_only_a_secure_address_is_accepted(env):
+    for bad in ("http://example.com", "ftp://example.com", "javascript:alert(1)", "//example.com", "example.com"):
+        r = Run(env.browser, env.base, db={"url": bad, "key": DB_KEY}).open()
+        ready = r.page.evaluate("window.DharDB.ready()")
+        label = r.page.evaluate("document.getElementById('btn-send') ? document.getElementById('btn-send').textContent : ''")
+        check(ready is False and "Send my answers" not in label, f"{bad!r} is not accepted as a database address (ready={ready})")
+        r.close()
+    r = Run(env.browser, env.base, db={"url": "https://example.com", "key": ""}).open()
+    check(r.page.evaluate("window.DharDB.ready()") is False, "an address without a key is not 'ready'")
+    r.close()
+
+
+@test
+def t_db_client_refuses_unknown_tables(env):
+    db_reset()
+    r = db_run(env).open()
+    out = r.page.evaluate("window.DharDB.insert('users', {a: 1})")
+    check(out["kind"] == "rejected" and out["code"] == "unknown-table", f"{out}")
+    out = r.page.evaluate("window.DharDB.insert('survey_responses?select=*', {a: 1})")
+    check(out["kind"] == "rejected" and out["code"] == "unknown-table", f"a table name with a query tacked on is refused too: {out}")
+    check(db_posts() == [], "neither reached the database")
+    check(r.page.evaluate("window.DharDB.tables") == ["survey_responses"], "the only table the page may write to is survey_responses")
+    r.close()
+
+
+@test
+def t_db_shipped_configuration_points_at_supabase(env):
+    """No override: this is what visitors get. The request is intercepted before it leaves the machine."""
+    r = Run(env.browser, env.base, db="default")
+    seen = []
+
+    def handler(route):
+        req = route.request
+        seen.append({"method": req.method, "url": req.url, "headers": req.headers})
+        cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "apikey, content-type, prefer, authorization, x-client-info",
+                "Access-Control-Allow-Methods": "POST, OPTIONS"}
+        if req.method == "OPTIONS":
+            route.fulfill(status=204, headers=cors, body="")
+        else:
+            route.fulfill(status=201, headers=cors, body="")
+    r.page.route(SUPABASE_URL + "/**", handler)
+    relay_walk(r)
+    check(r.page.evaluate("window.DharDB.ready()") is True, "the shipped page has the database switched on")
+    wait_relay_ready(r)
+    r.page.click("#btn-send")
+    check(panel_title(r) == "Your answers were sent", "the shipped page reports success when the database accepts")
+    posts = [x for x in seen if x["method"] == "POST"]
+    check(len(posts) == 1 and posts[0]["url"] == SUPABASE_URL + "/rest/v1/survey_responses", f"one POST to the project's table address: {[p['url'] for p in posts]}")
+    key = posts[0]["headers"].get("apikey", "")
+    check(key.startswith("sb_publishable_") and "secret" not in key and not key.startswith("eyJ"), "the key it carries is a publishable key, not a secret or service_role key")
+    check("authorization" not in posts[0]["headers"], "no Authorization header")
+    check([u for u in r.external if not u.startswith(SUPABASE_URL)] == [], f"nothing else left the page: {[u for u in r.external if not u.startswith(SUPABASE_URL)]}")
+    r.close()
+
+
+@test
+def t_db_wording(env):
+    r = db_run(env).open()
+    privacy = r.page.inner_text("#privacy")
+    check("Supabase" in privacy and "database" in privacy and "Abdullahi Baba Garba" in privacy, "the privacy note names the database, its host and who can read it")
+    check("Google" not in privacy and "Google" not in r.page.inner_text("#foot-note"), "it does not describe the Google relay")
+    check("only when you press Send" in privacy, "it says nothing leaves the page before Send")
+    check("technical records" in privacy, "it admits that the host keeps ordinary technical records of requests")
+    r.close()
+    r = Run(env.browser, env.base).open()            # database off: the plain email wording
+    check("Supabase" not in r.page.inner_text("body"), "with the database off the page does not mention it")
+    r.close()
+
+
 def main():
     server = start_server()
     env = Env()
     env.base = f"http://127.0.0.1:{server.server_address[1]}"
+    db_server = start_db()
     relay_proc = start_relay()
     if relay_proc is None:
         SKIPPED.append("node (the relay tests)")
@@ -1646,7 +2140,11 @@ def main():
         if ARGS.chromium:
             kwargs["executable_path"] = ARGS.chromium
         env.browser = p.chromium.launch(**kwargs)
-        for fn in TESTS:
+        for index, fn in enumerate(TESTS):
+            if ARGS.shard:
+                n, m = (int(x) for x in ARGS.shard.split("/"))
+                if index % m != n:
+                    continue
             if relay_proc is None and fn.__name__.startswith("t_relay_"):
                 continue
             if ARGS.only and ARGS.only not in fn.__name__:
@@ -1661,6 +2159,7 @@ def main():
                 traceback.print_exc()
         env.browser.close()
     server.shutdown()
+    db_server.shutdown()
     if relay_proc is not None:
         relay_proc.terminate()
 

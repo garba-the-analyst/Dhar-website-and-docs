@@ -1,5 +1,4 @@
 {
-  "_about": "Settings for where the site and the survey are hosted. site_url is the address the website is served from (used for link previews); survey_url is the address of the Shaping Dhar survey. Leave an address empty until it exists: an empty survey_url hides the survey buttons instead of showing a dead link. After editing, run: python3 tools/render_site.py",
-  "site_url": "",
-  "survey_url": ""
+  "_about": "Settings for the website. site_url is the address the website is served from (https://dhar.onrender.com); it is used for link previews. The survey is a page of the website (public/survey/), so it has no address of its own. After editing, run: python3 tools/render_site.py",
+  "site_url": "https://dhar.onrender.com"
 }

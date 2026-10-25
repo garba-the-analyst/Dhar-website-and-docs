@@ -13,7 +13,7 @@ What it checks
   4. DATA      public/index.html equals what tools/render_site.py produces from data/ (so the status board,
                milestones, direction tracks and speed chart cannot drift); the page's benchmark numbers equal
                data/benchmarks/*.json; every gate in data/status.json is written up in Canon Amendment A-1; no
-               retired claim; the survey link is shown only when data/site.json has a survey_url. With --forge-repo
+               retired claim; the survey is a page of the site, linked with relative links. With --forge-repo
                it also checks that the data/ copies match that forge-of-dhar checkout.
   5. BROWSER   Headless Chromium at 360, 768 and 1280 px: no console errors or failed requests, no
                sideways scroll, tabs work with the keyboard, the status filter and the Median/Mean
@@ -67,7 +67,9 @@ def read(p):
 
 def test_palette():
     print("PALETTE")
-    files = ["index.html", "assets/site.css", "assets/site.js", "site.webmanifest"]
+    files = ["index.html", "assets/site.css", "assets/site.js", "site.webmanifest",
+             "survey/index.html", "survey/assets/survey.css", "survey/assets/survey.js", "survey/assets/config.js",
+             "survey/relay-check.html"]
     logo = os.path.join(ROOT, "assets", "logo")
     files += ["assets/logo/" + f for f in os.listdir(logo) if f.endswith((".svg", ".html"))]
     for f in files:
@@ -79,6 +81,57 @@ def test_palette():
     check(not re.search(r"\brgba?\(|\bhsla?\(|\bhwb\(|\blab\(|\blch\(|oklch\(", css), "site.css has no rgb()/hsl()/lab() literals")
     check(not re.search(r"border-radius\s*:\s*[1-9]", css), "no rounded corners in site.css")
     check("prefers-color-scheme" not in css, "single dark theme: no light-theme switch")
+    scss = read("survey/assets/survey.css")
+    check(not re.search(r"\brgba?\(|\bhsla?\(|\bhwb\(|\blab\(|\blch\(|oklch\(", scss), "survey.css has no rgb()/hsl()/lab() literals (palette tokens only)")
+    check(not re.search(r"border-radius\s*:\s*[1-9]", scss), "no rounded corners in survey.css")
+    check("prefers-color-scheme" not in scss, "survey.css: single dark theme")
+
+
+def test_survey_in_site():
+    """The survey is a page of this website: same template, same stylesheet, nothing external, no secrets."""
+    print("SURVEY AS A PAGE OF THE SITE")
+    page = read("survey/index.html")
+    check('href="../assets/site.css"' in page, "the survey page uses the website's own stylesheet")
+    check('class="bar"' in page or "class=\"bar" in page, "it has the website's header bar")
+    check('class="foot"' in page, "it has the website's footer")
+    check('src="../assets/dhar-db.js"' in page, "it loads the database client from the shared assets folder")
+    external = []
+    for f in ("survey/index.html", "survey/relay-check.html"):
+        t = read(f)
+        # things the page LOADS (scripts, stylesheets, images, frames, fonts); plain links a visitor may click are fine
+        external += [(f, u) for u in re.findall(r'<(?:script|img|iframe|source|video|audio|embed)\b[^>]*\bsrc="(https?://[^"]+)"', t)]
+        external += [(f, u) for u in re.findall(r'<link\b[^>]*\bhref="(https?://[^"]+)"', t)]
+        external += [(f, u) for u in re.findall(r'url\(\s*["\']?(https?://[^)"\']+)', t)]
+    external += [(f, u) for f in ("survey/assets/survey.css",) for u in re.findall(r'url\(\s*["\']?(https?://[^)"\']+)', read(f))]
+    check(not external, "the survey pages load nothing from other sites %s" % (external or ""))
+    db = read("assets/dhar-db.js")
+    check("https://ctpjbmolgvkagdbafsvh.supabase.co" in db and "sb_publishable_" in db, "dhar-db.js carries the project address and a publishable key")
+    # nothing secret anywhere in the repository (tracked files and new ones; the .git folder is skipped)
+    patterns = {
+        "a JWT-style key (Supabase service_role/anon JWT)": r"eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,}",
+        "a Supabase secret key": r"sb_secret_[A-Za-z0-9_-]{8,}",
+        "a database URL with a real password": r"postgres(?:ql)?://[^:@/\s]+:(?!\[YOUR-PASSWORD\]|<|\$|%|\*|password\b|xxx)[^@\s]{6,}@",
+    }
+    hits = []
+    for base, dirs, names in os.walk(REPO):
+        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__")]
+        for n in names:
+            fp = os.path.join(base, n)
+            if n.endswith((".woff2", ".woff", ".pdf", ".png", ".jpg", ".jpeg", ".ico", ".pyc", ".zip")):
+                continue
+            try:
+                t = open(fp, encoding="utf-8").read()
+            except (UnicodeDecodeError, OSError):
+                continue
+            for label, pat in patterns.items():
+                if re.search(pat, t):
+                    hits.append("%s: %s" % (os.path.relpath(fp, REPO), label))
+    check(not hits, "no secret keys or database passwords in the repository %s" % (hits or ""))
+    mig = os.path.join(REPO, "supabase", "migrations")
+    files = sorted(os.listdir(mig)) if os.path.isdir(mig) else []
+    sql = "\n".join(open(os.path.join(mig, f), encoding="utf-8").read() for f in files)
+    check(files and "enable row level security" in sql and "grant insert" in sql and "to anon" in sql, "a migration creates survey_responses with row-level security and an insert-only grant to anon")
+    check(not re.search(r"grant\s+(all|select|update|delete)[^;]*\bto\s+[^;]*\banon\b", sql, re.I), "no migration grants anon more than insert")
 
 
 def test_logo():
@@ -142,9 +195,11 @@ def test_data(forge):
     check(set(used) <= allowed, "every status word is one of the four allowed")
     site = json.load(open(os.path.join(REPO, "data", "site.json"), encoding="utf-8"))
     page = read("index.html")
-    n = len(re.findall(r'href="%s"' % re.escape(site["survey_url"]), page)) if site["survey_url"] else 0
-    check((n == 2) if site["survey_url"] else ("survey/" not in page and "garba-the-analyst.github.io" not in page),
-          "survey link: %s" % ("2 links to survey_url" if site["survey_url"] else "no link shown while survey_url is empty, and no stale GitHub Pages address"))
+    n = len(re.findall(r'href="survey/"', page))
+    check(n == 3, "survey link: 3 relative links to the survey page (hero, call to action, footer): %d" % n)
+    check("survey_url" not in site and site["site_url"] == "https://dhar.onrender.com", "data/site.json has site_url https://dhar.onrender.com and no separate survey address")
+    check("garba-the-analyst.github.io" not in page and "shaping-dhar" not in page, "no stale GitHub Pages address and no branch name on the page")
+    check(os.path.exists(os.path.join(REPO, "public", "survey", "index.html")), "the survey page exists at public/survey/index.html")
     retired = ["fastest entry among", "SCAFFOLDING ONLY", "45 of 45", "Turing-complete foundation required"]
     check(not [r for r in retired if r in page], "no retired claim on the page")
     if forge:
@@ -197,11 +252,7 @@ def test_browser(axe):
                 for sec in ("status", "progress", "direction", "language", "pipeline", "speed", "name", "survey"):
                     check(pg.locator("#" + sec).count() == 1, "section #%s exists" % sec)
                 check(pg.locator("#direction .track").count() == 3 and pg.locator("#progress .timeline li").count() >= 1, "direction shows 3 tracks and progress shows milestones")
-                _site = json.load(open(os.path.join(REPO, "data", "site.json"), encoding="utf-8"))
-                if _site["survey_url"]:
-                    check(pg.get_attribute("#survey a.btn", "href") == _site["survey_url"], "survey button points at survey_url")
-                else:
-                    check(pg.locator("#survey a.btn").count() == 0, "no survey button while survey_url is empty")
+                check(pg.get_attribute("#survey a.btn", "href") == "survey/", "survey button points at the survey page of this site")
                 v1 = pg.inner_text("#verdict")
                 pg.click('[data-metric="mean"]')
                 v2 = pg.inner_text("#verdict")
@@ -219,6 +270,30 @@ def test_browser(axe):
                     pg.add_script_tag(path=axe)
                     res = pg.evaluate("axe.run().then(r => r.violations.map(v => v.id + ': ' + v.nodes.length + ' ' + v.nodes[0].target.join(' ')))")
                     check(not res, "axe-core: no violations %s" % (res or ""))
+            sv = ctx.new_page()
+            serrs = []
+            sv.on("console", lambda m: serrs.append(m.text) if m.type in ("error", "warning") else None)
+            sv.on("pageerror", lambda e: serrs.append(str(e)))
+            sv.on("requestfailed", lambda r: serrs.append("failed " + r.url))
+            reqs = []
+            sv.on("request", lambda r: reqs.append(r.url))
+            sv.goto("http://127.0.0.1:%d/survey/" % port)
+            sv.wait_for_selector("html[data-ready=true]")
+            check(not serrs, "%d px: survey page has no console errors or failed requests %s" % (w, serrs or ""))
+            check(sv.evaluate("document.documentElement.scrollWidth") <= w, "%d px: survey page has no sideways scroll" % w)
+            check(sv.evaluate("getComputedStyle(document.body).backgroundColor") == "rgb(11, 11, 13)", "%d px: survey page body is Forge Black, like the site" % w)
+            same = sv.evaluate("getComputedStyle(document.querySelector('.bar')).backgroundColor") == pg.evaluate("getComputedStyle(document.querySelector('.bar')).backgroundColor")
+            check(same, "%d px: survey header bar is styled like the site's" % w)
+            check(all(u.startswith("http://127.0.0.1:%d/" % port) for u in reqs), "%d px: opening the survey requests nothing from another site" % w)
+            check(sv.evaluate("document.title").lower().find("survey") >= 0, "%d px: survey page title names the survey" % w)
+            if w == 1280:
+                sv.click(".bar a[href^='../']")
+                sv.wait_for_load_state()
+                check(sv.url.rstrip("/").endswith(str(port)) or "/#" in sv.url or sv.url.endswith("/"), "survey header links back to the website")
+                pg.goto(url)
+                pg.click("#survey a.btn")
+                pg.wait_for_selector("html[data-ready=true]")
+                check(pg.url.rstrip("/").endswith("/survey"), "the survey button on the website opens the survey page (%s)" % pg.url)
             ctx.close()
         b.close()
 
@@ -230,6 +305,7 @@ def main():
     ap.add_argument("--axe")
     a = ap.parse_args()
     test_palette()
+    test_survey_in_site()
     test_logo()
     if a.dharc:
         test_samples(a.dharc)

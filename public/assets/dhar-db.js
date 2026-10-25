@@ -21,12 +21,16 @@
  *   DharDB.ready()                    true when an address and key are set and this browser can send
  *   DharDB.insert('survey_responses', { client_id: ..., answers: {...}, ... })
  *       -> Promise that always resolves (never rejects) to
- *          { kind: 'ok' }                                  stored (or already stored: see below)
+ *          { kind: 'ok' }                                  stored; or { kind: 'ok', duplicate: true } when
+ *                                                          that client_id was already stored (see below)
  *          { kind: 'rejected', status, code, message }     the database said no (bad shape, too many)
  *          { kind: 'unreachable', why }                    offline, blocked or timed out; the row may
  *                                                          or may not have arrived, so retrying is safe
- *   Retrying is safe because the row carries a client_id that is unique in the table: a second copy
- *   is ignored by the database instead of being stored twice.
+ *   Retrying is safe because the row carries a client_id that is unique in the table: the database
+ *   refuses a second copy (PostgreSQL error 23505, which PostgREST answers with HTTP 409), and this
+ *   client reports that as "ok, duplicate" because the response is stored. (A plain insert is used,
+ *   not "ON CONFLICT", because that form needs permission to READ the column and the public key
+ *   deliberately has none. supabase/tests/verify_migrations.mjs proves this against PostgreSQL.)
  *
  * TESTS AND OTHER HOSTS
  *   A page (or a test) can set window.DHAR_DB_CONFIG = { url: '...', key: '...' } before this script
@@ -41,9 +45,10 @@
     key: 'sb_publishable_3SubF-oSyq6QDrrONNqdcg_fnxO-nE0'
   };
 
-  /* Tables this client may write to. `conflict` is the column whose repeat is ignored. */
+  /* Tables this client may write to. `unique` is the column the database keeps unique, so that a
+     repeated send of the same row (a retry) is recognised: a repeat comes back as 409 / 23505. */
   var TABLES = {
-    survey_responses: { conflict: 'client_id' }
+    survey_responses: { unique: 'client_id' }
   };
 
   var TIMEOUT_MS = 20000;
@@ -78,15 +83,14 @@
       }, TIMEOUT_MS);
     });
 
-    var url = BASE + '/rest/v1/' + encodeURIComponent(table) + '?on_conflict=' + encodeURIComponent(TABLES[table].conflict);
+    var url = BASE + '/rest/v1/' + encodeURIComponent(table);
     var attempt = window.fetch(url, {
       method: 'POST',
       headers: {
         'apikey': KEY,
         'Content-Type': 'application/json',
-        /* return=minimal: the key is not allowed to read rows back. ignore-duplicates: a repeat of the
-           same client_id is not an error, it is simply not stored twice. */
-        'Prefer': 'return=minimal,resolution=ignore-duplicates'
+        /* return=minimal: the key is not allowed to read rows back, so none is asked for. */
+        'Prefer': 'return=minimal'
       },
       body: body,
       credentials: 'omit',
@@ -98,10 +102,13 @@
       return res.text().then(function (text) {
         var data = null;
         try { data = JSON.parse(text); } catch (e) { data = null; }
+        var code = data && data.code ? String(data.code) : 'http-' + res.status;
+        /* "This client_id is already stored": a retry of a response that did arrive. Not a failure. */
+        if (res.status === 409 && code === '23505') { return { kind: 'ok', status: 409, duplicate: true }; }
         return {
           kind: 'rejected',
           status: res.status,
-          code: data && data.code ? String(data.code) : 'http-' + res.status,
+          code: code,
           message: data && data.message ? String(data.message) : 'The database answered with HTTP ' + res.status + '.'
         };
       }, function () {

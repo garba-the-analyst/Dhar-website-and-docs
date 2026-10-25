@@ -1273,7 +1273,7 @@
   /* The same three outcomes as postToRelay: ok, rejected (the database said no), unreachable. */
   function postToDb(row) {
     return window.DharDB.insert('survey_responses', row).then(function (r) {
-      if (r.kind === 'ok') { return { kind: 'ok', data: { ok: true, delivered: 'stored' } }; }
+      if (r.kind === 'ok') { return { kind: 'ok', data: { ok: true, delivered: 'stored', duplicate: !!r.duplicate } }; }
       if (r.kind === 'unreachable') { return r; }
       var code = 'database';
       if (r.status === 429 || /too many/i.test(r.message || '')) { code = 'too-many'; }
@@ -1282,7 +1282,8 @@
     });
   }
 
-  /* One retry after a network failure. Safe: the table ignores a repeated client_id. */
+  /* One retry after a network failure. Safe: the table keeps client_id unique, and dhar-db.js reports a
+     repeat as success (duplicate), so a response is never stored twice. */
   function sendToDb(row) {
     return postToDb(row).then(function (outcome) {
       if (outcome.kind !== 'unreachable') { return outcome; }
@@ -1576,7 +1577,7 @@
     var foot = document.getElementById('foot-note');
     if (DB_ON) {
       if (privacy) {
-        privacy.textContent = 'When you finish and press Send, your answers are saved over an encrypted connection in a private database that the project runs on Supabase. The public cannot read it; only Abdullahi Baba Garba, who leads the project, can. He sees only what you type, and your email address only if you give it. A PDF copy of your questions and answers is made on this device for you to keep. Nothing is sent before you press Send, and unfinished answers stay on this device. If you would rather send them yourself, an email option sits next to the Send button. Answers are never published with your name. This page loads nothing from other sites; the only place it sends anything is the database, and only when you press Send.';
+        privacy.textContent = 'When you finish and press Send, your answers are saved over an encrypted connection in a private database that the project runs on Supabase, a database hosting company. The public cannot read it; only Abdullahi Baba Garba, who leads the project, can. He sees only what you type, and your email address only if you give it. As the host, Supabase also keeps ordinary technical records of requests, such as the time and network address. A PDF copy of your questions and answers is made on this device for you to keep. Nothing is sent before you press Send, and unfinished answers stay on this device. If you would rather send them yourself, an email option sits next to the Send button. Answers are never published with your name. This page loads nothing from other sites; the only place it sends anything is the database, and only when you press Send.';
       }
       if (foot) {
         foot.textContent = 'Answers are sent only when you press Send. Unfinished answers stay on your device.';

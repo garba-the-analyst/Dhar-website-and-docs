@@ -558,13 +558,13 @@ test('selfTest sends a test email with a valid PDF to the owner', () => {
 });
 
 test('the shared token in Code.gs matches the page config', () => {
-  /* the site is in src/assets in the development layout and in assets/ in the published one */
-  const root = path.join(__dirname, '..', '..');
-  const dir = [path.join(root, 'src', 'assets'), path.join(root, 'assets')].find(d => fs.existsSync(path.join(d, 'config.js')));
-  check(!!dir, 'found assets/config.js');
+  /* the survey page is public/survey/ in the repository (survey/relay/test -> repository root is three levels up) */
+  const root = path.join(__dirname, '..', '..', '..');
+  const dir = path.join(root, 'public', 'survey', 'assets');
+  check(fs.existsSync(path.join(dir, 'config.js')), 'found public/survey/assets/config.js');
   const cfg = fs.readFileSync(path.join(dir, 'config.js'), 'utf8');
   const m = /relayToken:\s*'([^']*)'/.exec(cfg);
-  check(!!m && m[1] === TOKEN, 'relayToken in assets/config.js equals CONFIG.TOKEN');
+  check(!!m && m[1] === TOKEN, 'relayToken in public/survey/assets/config.js equals CONFIG.TOKEN');
   const proto = /RELAY_PROTOCOL\s*=\s*(\d+)/.exec(fs.readFileSync(path.join(dir, 'survey.js'), 'utf8'));
   check(!!proto && proto[1] === '1', 'RELAY_PROTOCOL in survey.js equals PROTOCOL');
 });

@@ -23,6 +23,9 @@ WHAT IT ACCEPTS (standard library only, no installs)
     for example from Gmail Takeout or Thunderbird)
   - text that has been quoted in a reply or forward ("> " in front of each line)
   - several responses in one file
+  - an export of the website's database table survey_responses, as .csv (Supabase: Table Editor,
+    Export, "Export table as CSV") or .json (the rows as an array of objects). Each row's
+    report_text column holds the same text as the emailed response, so the same reader is used.
 
 CSV COLUMNS
   source, response, response_id, survey_version, submitted, roles, answered, wording, pdf_copy,
@@ -46,11 +49,13 @@ CSV COLUMNS
 USAGE
   python3 tools/parse_responses.py responses.mbox -o responses.csv
   python3 tools/parse_responses.py mail/*.txt mail/*.eml -o responses.csv
+  python3 tools/parse_responses.py survey_responses.csv -o responses.csv        (a database export)
 """
 import argparse
 import csv
 import email
 import email.policy
+import json
 import mailbox
 import os
 import re
@@ -82,6 +87,20 @@ def load_texts(path):
     if lower.endswith(".mbox"):
         for i, msg in enumerate(mailbox.mbox(path, factory=lambda f: email.message_from_binary_file(f, policy=email.policy.default)), 1):
             yield f"{os.path.basename(path)}#{i}", message_text(msg)
+    elif lower.endswith(".csv"):
+        csv.field_size_limit(sys.maxsize)            # a response can be long; the default limit is 128 KB
+        with open(path, "r", encoding="utf-8-sig", errors="replace", newline="") as fh:
+            for i, row in enumerate(csv.DictReader(fh), 1):
+                if row.get("report_text"):
+                    yield f"{os.path.basename(path)}#{i}", row["report_text"]
+    elif lower.endswith(".json"):
+        with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            data = data.get("data") or data.get("rows") or [data]
+        for i, row in enumerate(data, 1):
+            if isinstance(row, dict) and isinstance(row.get("report_text"), str) and row["report_text"]:
+                yield f"{os.path.basename(path)}#{i}", row["report_text"]
     elif lower.endswith(".eml"):
         with open(path, "rb") as fh:
             msg = email.message_from_binary_file(fh, policy=email.policy.default)
@@ -187,7 +206,7 @@ def parse_block(block):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Convert emailed Shaping Dhar responses into a CSV file.")
-    ap.add_argument("inputs", nargs="+", help=".txt, .eml or .mbox files")
+    ap.add_argument("inputs", nargs="+", help=".txt, .eml, .mbox files, or a .csv / .json export of the survey_responses table")
     ap.add_argument("-o", "--output", default="responses.csv", help="CSV file to write (default: responses.csv)")
     args = ap.parse_args(argv)
 

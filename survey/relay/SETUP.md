@@ -23,7 +23,7 @@ It takes about ten minutes, once, on a computer. (A phone can do it if you open 
 1. Open <https://script.google.com> and sign in with the Gmail account that should **receive** the responses.
 2. Choose **New project**. Click the name at the top and rename it **Shaping Dhar relay**.
 3. In the editor you will see a file called `Code.gs` with a few lines in it. Select all of it and delete it.
-4. Open `relay/Code.gs` from this repository (<https://github.com/garba-the-analyst/forge-of-dhar/blob/gh-pages/relay/Code.gs>), press **Raw**, select all, copy, and paste it into the editor.
+4. Open `survey/relay/Code.gs` from this repository (<https://github.com/garba-the-analyst/Dhar-website-and-docs/blob/main/survey/relay/Code.gs>), press **Raw**, select all, copy, and paste it into the editor.
 5. Press **Save** (the disk icon, or Ctrl+S).
 
 ### 2. Test the sending and the log
@@ -48,16 +48,19 @@ If `selfTest` fails, the log says why. Common causes: you did not approve the pe
 If "Anyone" is not offered, your account is probably a school or company (Workspace) account whose administrator restricts it. Use a personal Gmail account for the relay instead.
 
 ### 4. Tell the survey about it
-Send me the URL and I will put it in. Or do it yourself: open `assets/config.js` in the repository, set
+**First, a decision.** The shipped survey saves each response in the website's own database (see `supabase/README.md`), and that takes precedence: the relay is used only when the database is switched off. If you want the relay (email with the PDF, and a row in your Google Sheet) instead of the database, do both of these in the repository:
+
+1. In `public/assets/dhar-db.js`, change `DEFAULTS.url` and `DEFAULTS.key` to empty strings (`''`). (This switches the database off for the whole site, which today only the survey uses.)
+2. In `public/survey/assets/config.js`, set
 
 ```js
 relayUrl: 'https://script.google.com/macros/s/AKfy.../exec',
 ```
 
-and commit. GitHub Pages updates in about a minute. (`relayToken` already matches `CONFIG.TOKEN` in `Code.gs`; leave both as they are.)
+and commit and push. Render redeploys the site in a minute or two. (`relayToken` already matches `CONFIG.TOKEN` in `Code.gs`; leave both as they are.) The survey's start-page wording follows the mode that is on, so nothing else needs editing.
 
 ### 5. Check it from the real site
-Open **<https://garba-the-analyst.github.io/forge-of-dhar/relay-check.html>** and press the two buttons:
+Open **<https://dhar.onrender.com/survey/relay-check.html>** and press the two buttons:
 
 * **Check the relay**: green means the web address is right and the browser may read the relay's answer.
 * **Send a test response**: green means a `[TEST]` email with a PDF is on its way and a row marked `test-emailed` was added to the log. It should arrive within a minute.
@@ -95,7 +98,7 @@ Every response has a reference such as `dhar-20261019-154500-k3x9ab`. If one rea
 | Send responses to another address | Set `RECIPIENT` near the top of `Code.gs`, then deploy a new version. |
 | Use a spreadsheet I made myself | Set `LOG_SPREADSHEET_ID` in `Code.gs` to the long ID in its web address, then deploy a new version. |
 | Stop saving to the sheet | Set `LOG_TO_SHEET` to `false`, then deploy a new version. (An exhausted mail quota then sends respondents to the email-draft route again.) |
-| Switch the relay off | Set `relayUrl: ''` in `assets/config.js`. The survey goes back to the email-draft route. |
+| Switch the relay off | Set `relayUrl: ''` in `public/survey/assets/config.js`. With the database also off, the survey goes back to the email-draft route. |
 | Stop the script answering at all | **Deploy > Manage deployments > Archive**, or delete the project. |
 | Change the token | Change `TOKEN` in `Code.gs` and `relayToken` in `config.js` to the same new value, and deploy a new version. The token is visible in the page source, so it only stops stray requests. It is not a password. |
 | Allow more per hour | Raise `MAX_PER_HOUR` in `Code.gs` (default 40), deploy a new version. |
@@ -108,4 +111,4 @@ Every response has a reference such as `dhar-20261019-154500-k3x9ab`. If one rea
 
 ## What has and has not been verified
 * `Code.gs` is tested with `node relay/test/relay_test.js` (309 checks) against an imitation of the Google services (mail, cache, lock, properties and spreadsheets, including a sheet's 26-column start and its refusal of out-of-range writes), and together with the survey page by the browser tests (`python3 tests/run_tests.py`), which run the real `Code.gs` behind `relay/test/mock_apps_script.js`, a local server that behaves like an Apps Script web app (a redirect to another address, CORS headers on the answer, no answer to a pre-flight).
-* The imitation follows Google's documentation. It has **not** been run against real Google servers from here. Things only the real service can confirm, which is why steps 2 and 5 exist: that a page on github.io may **read** the relay's answer, that Google accepts the attachment and Reply-To exactly as documented, and that Sheets keeps a leading apostrophe as a text marker when written by a script. If the page cannot read the answer, the survey says it could not confirm delivery and offers the email route; the response may still have arrived, and a repeat is ignored by its reference.
+* The imitation follows Google's documentation. It has **not** been run against real Google servers from here. Things only the real service can confirm, which is why steps 2 and 5 exist: that a page on the site's own address may **read** the relay's answer, that Google accepts the attachment and Reply-To exactly as documented, and that Sheets keeps a leading apostrophe as a text marker when written by a script. If the page cannot read the answer, the survey says it could not confirm delivery and offers the email route; the response may still have arrived, and a repeat is ignored by its reference.

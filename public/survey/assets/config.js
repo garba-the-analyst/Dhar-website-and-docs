@@ -62,8 +62,12 @@ window.DHAR_CONFIG = {
   pdfAutoDownload: true,
 
   /*
-   * DIRECT DELIVERY (the relay)
-   * With relayUrl set, the main button is "Send my answers": the page posts the answers and the
+   * DIRECT DELIVERY (the relay): OPTIONAL, and OFF on the shipped site.
+   * The shipped site saves each response in its own database (assets/dhar-db.js, defined in
+   * supabase/), which needs nothing set here. The relay below is used only when that database is
+   * switched off (an empty url in dhar-db.js) AND relayUrl is set.
+   *
+   * With relayUrl set (and the database off), the main button is "Send my answers": the page posts the answers and the
    * PDF copy to a small Google Apps Script web app that you run (relay/Code.gs, set up with
    * relay/SETUP.md), and that script emails both to you, PDF attached, with the respondent's
    * address (if they gave one) as Reply-To. The respondent does not have to open an email app.
