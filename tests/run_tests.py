@@ -200,6 +200,12 @@ def test_data(forge):
     check("survey_url" not in site and site["site_url"] == "https://dhar.onrender.com", "data/site.json has site_url https://dhar.onrender.com and no separate survey address")
     check("garba-the-analyst.github.io" not in page and "shaping-dhar" not in page, "no stale GitHub Pages address and no branch name on the page")
     check(os.path.exists(os.path.join(REPO, "public", "survey", "index.html")), "the survey page exists at public/survey/index.html")
+    st_asof = json.load(open(os.path.join(REPO, "data", "status.json"), encoding="utf-8"))["as_of"]
+    sys.path.insert(0, os.path.join(REPO, "tools"))
+    import render_site as _rs
+    longs = set(re.findall(r"<!--asof-long-->(.*?)<!--/asof-long-->", page)) | set(re.findall(r"<!--asof-short-->(.*?)<!--/asof-short-->", page))
+    want = {_rs.long_date(st_asof), _rs.short_date(st_asof)}
+    check(longs and longs <= want, "every status date on the page (header, stamp and footer) is the as_of date %s: %s" % (sorted(want), sorted(longs)))
     retired = ["fastest entry among", "SCAFFOLDING ONLY", "45 of 45", "Turing-complete foundation required"]
     check(not [r for r in retired if r in page], "no retired claim on the page")
     if forge:

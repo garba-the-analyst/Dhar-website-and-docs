@@ -175,7 +175,7 @@ def replace_inline(text, name, value):
     pat = re.compile(r"<!--%s-->.*?<!--/%s-->" % (name, name), re.S)
     if not pat.search(text):
         raise SystemExit("inline marker %s missing in public/index.html" % name)
-    return pat.sub(lambda m: "<!--%s-->%s<!--/%s-->" % (name, value, name), text, count=1)
+    return pat.sub(lambda m: "<!--%s-->%s<!--/%s-->" % (name, value, name), text)   # every occurrence, not only the first
 
 
 def render(page, st, bench, site, src):
