@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 dist/
 .DS_Store
+docs/canon/pdf/MANIFEST.json.lock
+docs/canon/pdf/MANIFEST.json.tmp.*

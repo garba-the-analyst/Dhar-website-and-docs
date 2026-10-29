@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ meta.title|e }}</title>
+<style>
+{{ css }}
+:root {
+  --run-top-left: {{ run_top_left }};
+  --run-top-right: {{ run_top_right }};
+  --run-bottom-left: {{ run_bottom_left }};
+}
+</style>
+</head>
+<body>
+
+<section class="cover" aria-label="Cover">
+  <img class="mark" src="{{ monogram }}" alt="">
+  <img class="logo" src="{{ logo }}" alt="DHAR">
+  <div class="label">{{ meta.volume|e }}</div>
+  <h1>{{ meta.short|e }}</h1>
+  <div class="rule"></div>
+  {% if meta.quote %}<div class="quote">&ldquo;{{ meta.quote|e }}&rdquo;</div>{% endif %}
+  <div class="meta">
+    <table class="plain">
+      {% for k, v in cover_rows %}<tr><th>{{ k|e }}</th><td>{{ v|e }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="foot"><span>{{ meta.part_label|e }}</span><span>v{{ meta.version|e }} &middot; {{ meta.date|e }}</span></div>
+</section>
+
+{% if toc %}
+<section class="contents">
+  <h2>Contents</h2>
+  <ol>
+    {% for t in toc %}<li class="l{{ t.level }}"><a class="t" href="#{{ t.id }}">{{ t.text|e }}</a><span class="dots"></span><span class="p">{{ t.page }}</span></li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+<main>
+{{ body }}
+</main>
+
+<section class="colophon">
+  <h2>Revision log</h2>
+  <p class="line">{{ colophon_line|e }}</p>
+  {% if revisions %}
+  <table>
+    <thead><tr><th style="width:11%">Version</th>{% if has_dates %}<th style="width:20%">Date</th>{% endif %}<th>Change</th></tr></thead>
+    <tbody>
+    {% for r in revisions %}<tr><td>{{ r.v|e }}</td>{% if has_dates %}<td>{{ (r.date or '')|e }}</td>{% endif %}<td>{{ r.text|e }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+</body>
+</html>

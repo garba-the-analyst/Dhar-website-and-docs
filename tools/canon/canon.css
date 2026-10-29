@@ -1,0 +1,305 @@
+/*
+ * canon.css - the look of the Canon of Dhar documents, amendments and progress reports.
+ *
+ * It is the website's design system (docs/BRAND.md) applied to paper:
+ *   1. COLOUR. The six palette colours and nothing else. Every other tone is one of the six mixed
+ *      with another of the six (color-mix), or at an opacity. tests/run_tests.py fails if any other
+ *      6-digit hex colour appears in this file.
+ *   2. TYPE. Saira for everything that is read, JetBrains Mono for code, data and labels.
+ *   3. SHAPE. Cut, not drawn: straight edges and chamfers, no rounded corners.
+ *   4. ONE LOOK. Dark, on Forge Black, on every page including the margins.
+ *
+ * tools/build_canon.py replaces {{FONTS}} with the folder of public/assets/fonts and renders this
+ * file with Chromium. Page furniture (running header and footer, page numbers) is CSS margin boxes.
+ */
+
+/* ---------------------------------------------------------------------------------------------
+   1. Fonts (the same files as the website)
+   --------------------------------------------------------------------------------------------- */
+@font-face {
+  font-family: "Saira";
+  src: url("{{FONTS}}/saira-latin-wdth-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 50% 125%;
+  font-style: normal;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("{{FONTS}}/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Noto Naskh Arabic";
+  src: url("{{FONTS}}/noto-naskh-arabic-arabic-700-normal.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   2. Tokens
+   --------------------------------------------------------------------------------------------- */
+:root {
+  --forge:  #0B0B0D;   /* Forge Black    depth, strength, foundation */
+  --ember:  #FF5C00;   /* Molten Ember   energy, intensity, drive    */
+  --steel:  #4B5563;   /* Tempered Steel stability, resilience, trust */
+  --cyan:   #22D3EE;   /* Precision Cyan clarity, accuracy, focus    */
+  --copper: #C2410C;   /* Hot Copper     heat, performance, craft    */
+  --ash:    #F3F4F6;   /* Ash            balance, refinement, purpose */
+
+  --panel:    color-mix(in srgb, var(--ash) 5%, var(--forge));
+  --panel-hi: color-mix(in srgb, var(--ash) 9%, var(--forge));
+  --zebra:    color-mix(in srgb, var(--ash) 3%, var(--forge));
+  --hair:     color-mix(in srgb, var(--steel) 55%, transparent);
+  --line:     color-mix(in srgb, var(--steel) 85%, var(--forge));
+  --fg:       var(--ash);
+  --fg-2:     color-mix(in srgb, var(--ash) 80%, var(--forge));
+  --fg-3:     color-mix(in srgb, var(--ash) 60%, var(--forge));
+
+  --sans: "Saira", "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   3. Page: Letter, dark on every page, margin boxes for the running header and footer
+   --------------------------------------------------------------------------------------------- */
+@page {
+  size: Letter;
+  margin: 24mm 19mm 22mm 19mm;
+  background: var(--forge);
+
+  @top-left   { content: var(--run-top-left);  font: 500 6.8pt var(--mono); letter-spacing: .08em; color: var(--steel); vertical-align: bottom; padding-bottom: 5mm; }
+  @top-right  { content: var(--run-top-right); font: 500 6.8pt var(--mono); letter-spacing: .08em; color: var(--ember); vertical-align: bottom; padding-bottom: 5mm; }
+  @bottom-left   { content: var(--run-bottom-left); font: 500 6.8pt var(--mono); letter-spacing: .06em; color: var(--steel); vertical-align: top; padding-top: 5mm; }
+  @bottom-right  { content: counter(page) " / " counter(pages); font: 500 6.8pt var(--mono); letter-spacing: .06em; color: var(--fg-3); vertical-align: top; padding-top: 5mm; }
+}
+@page :first {
+  margin: 0;
+  background: var(--forge);
+  @top-left { content: none; } @top-right { content: none; }
+  @bottom-left { content: none; } @bottom-right { content: none; }
+}
+
+html { background: var(--forge); }
+body {
+  margin: 0;
+  background: var(--forge);
+  color: var(--fg-2);
+  font: 400 9.5pt/1.56 var(--sans);
+  font-stretch: 100%;
+  font-kerning: normal;
+  hyphens: manual;
+  orphans: 3;
+  widows: 3;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   4. Cover
+   --------------------------------------------------------------------------------------------- */
+.cover {
+  position: relative;
+  width: 8.5in;
+  height: 11in;
+  box-sizing: border-box;
+  padding: 24mm 22mm 20mm 22mm;
+  overflow: hidden;
+  break-after: page;
+  border-top: 7px solid var(--ember);
+  display: flex;
+  flex-direction: column;
+}
+.cover .mark { position: absolute; right: -34mm; top: 38mm; width: 150mm; opacity: .07; }
+.cover .logo { width: 62mm; height: auto; display: block; }
+.cover .label {
+  margin-top: 34mm;
+  font: 600 8.2pt var(--mono);
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+.cover h1 {
+  margin: 4mm 0 0;
+  font: 800 40pt/1.02 var(--sans);
+  font-stretch: 118%;
+  letter-spacing: .01em;
+  color: var(--ash);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.cover .rule { margin: 8mm 0 6mm; width: 46mm; height: 3px; background: linear-gradient(90deg, var(--ember), var(--copper)); }
+.cover .quote { max-width: 128mm; font: 400 13.5pt/1.4 var(--sans); font-stretch: 100%; color: var(--fg-2); }
+.cover .meta {
+  margin-top: auto;
+  padding: 7mm 8mm 6mm 8mm;
+  background: var(--panel);
+  border-left: 3px solid var(--ember);
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
+}
+.cover .meta table { margin: 0; font-size: 9pt; }
+.cover .meta th {
+  width: 36mm;
+  padding: 2.2mm 4mm 2.2mm 0;
+  text-align: left; vertical-align: top;
+  font: 600 7.2pt var(--mono);
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--cyan);
+  background: none; border: 0;
+}
+.cover .meta td { padding: 2.2mm 0; color: var(--ash); border: 0; background: none; }
+.cover .foot {
+  margin-top: 8mm;
+  padding-top: 4mm;
+  border-top: 1px solid var(--hair);
+  display: flex; justify-content: space-between;
+  font: 500 7pt var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--steel);
+}
+
+/* ---------------------------------------------------------------------------------------------
+   5. Contents page
+   --------------------------------------------------------------------------------------------- */
+.contents { break-after: page; }
+.contents h2 { margin-top: 0; }
+.contents ol { list-style: none; margin: 0; padding: 0; }
+.contents li { display: flex; align-items: baseline; gap: 6px; padding: 2.1pt 0; }
+.contents li.l1 { margin-top: 5pt; font-weight: 600; color: var(--ash); }
+.contents a { color: inherit; }
+.contents li.l2 { padding-left: 14pt; color: var(--fg-2); font-size: 9pt; }
+.contents li::before { content: none; }
+.contents .t { flex: 0 1 auto; }
+.contents .dots { flex: 1 1 auto; border-bottom: 1px dotted var(--steel); transform: translateY(-2px); min-width: 12px; }
+.contents .p { flex: 0 0 auto; font: 500 8pt var(--mono); color: var(--fg-3); }
+
+/* ---------------------------------------------------------------------------------------------
+   6. Text
+   --------------------------------------------------------------------------------------------- */
+h2, h3, h4, h5 { break-after: avoid; break-inside: avoid; color: var(--ash); }
+h2 {
+  margin: 1.9em 0 .55em;
+  padding: 0 0 .28em;
+  font: 650 15pt/1.2 var(--sans);
+  font-stretch: 110%;
+  border-bottom: 1px solid var(--hair);
+}
+h2::before {
+  content: "";
+  display: inline-block;
+  width: .52em; height: .52em;
+  margin-right: .5em;
+  background: var(--ember);
+  clip-path: polygon(0 0, 62% 0, 100% 38%, 100% 100%, 0 100%);
+}
+h3 { margin: 1.5em 0 .35em; font: 600 11.2pt/1.25 var(--sans); font-stretch: 106%; }
+h4 { margin: 1.25em 0 .25em; font: 600 9pt/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ember); }
+h5 { margin: 1em 0 .2em; font: 600 9.4pt var(--sans); color: var(--cyan); }
+
+p { margin: 0 0 .75em; }
+strong, b { color: var(--ash); font-weight: 650; }
+em, i { color: var(--ash); }
+a { color: var(--cyan); text-decoration: none; }
+hr { border: 0; border-top: 1px solid var(--hair); margin: 1.4em 0; }
+abbr { text-decoration: none; }
+
+code, kbd, samp {
+  font: 500 .88em var(--mono);
+  color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 8%, var(--forge));
+  padding: .05em .3em;
+  overflow-wrap: anywhere;
+}
+pre {
+  margin: .9em 0 1.1em;
+  padding: .8em 1em;
+  background: var(--panel);
+  border-left: 3px solid var(--ember);
+  font: 400 7.9pt/1.5 var(--mono);
+  color: var(--ash);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  break-inside: avoid;
+}
+pre code { background: none; padding: 0; color: inherit; font: inherit; }
+
+ul, ol { margin: 0 0 .8em; padding-left: 1.35em; }
+ol { padding-left: 2.1em; }
+li { margin: 0 0 .28em; padding-left: .15em; }
+ul { list-style: none; }
+/* The bullet is an in-flow inline-block, not an absolutely positioned box: positioned boxes are painted after the
+   normal flow, which puts the list text out of reading order in the PDF (copy, search, screen readers). */
+ul > li::before {
+  content: "";
+  display: inline-block;
+  width: .42em; height: .42em;
+  margin-left: -1.05em; margin-right: .63em;
+  vertical-align: .08em;
+  background: var(--ember);
+  clip-path: polygon(0 0, 60% 0, 100% 40%, 100% 100%, 0 100%);
+}
+ol > li::marker { font: 600 .9em var(--mono); color: var(--ember); }
+li > ul, li > ol { margin-top: .3em; margin-bottom: .2em; }
+
+blockquote {
+  margin: 1em 0;
+  padding: .75em 1.1em .5em 1.1em;
+  background: var(--panel);
+  border-left: 3px solid var(--cyan);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  break-inside: avoid;
+  color: var(--fg-2);
+}
+blockquote p:last-child { margin-bottom: .3em; }
+.note, .decision, .warn {
+  margin: 1em 0;
+  padding: .75em 1.1em .5em 1.1em;
+  background: var(--panel);
+  border-left: 3px solid var(--cyan);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  break-inside: avoid;
+}
+.decision { border-left-color: var(--ember); }
+.warn { border-left-color: var(--copper); }
+.note > p:last-child, .decision > p:last-child, .warn > p:last-child { margin-bottom: .3em; }
+
+/* ---------------------------------------------------------------------------------------------
+   7. Tables
+   --------------------------------------------------------------------------------------------- */
+table { width: 100%; margin: .9em 0 1.1em; border-collapse: collapse; font-size: 8.4pt; line-height: 1.42; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th {
+  padding: 5pt 8pt;
+  text-align: left; vertical-align: bottom;
+  font: 600 7pt var(--mono);
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--cyan);
+  border-bottom: 1.5px solid var(--ember);
+}
+td { padding: 5pt 8pt; vertical-align: top; border-bottom: .5px solid var(--hair); color: var(--fg-2); }
+tbody tr:nth-child(even) td { background: var(--zebra); }
+td:first-child { color: var(--ash); font-weight: 600; }
+table.plain td:first-child { color: inherit; font-weight: inherit; }
+td.nw { white-space: nowrap; }
+table.compact { font-size: 7.6pt; }
+table.compact th, table.compact td { padding: 3.5pt 6pt; }
+td code, th code { font-size: .92em; }
+td ul, td ol { margin: 0; padding-left: 1.1em; }
+td p { margin: 0 0 .3em; }
+
+/* ---------------------------------------------------------------------------------------------
+   8. Colophon and revision log
+   --------------------------------------------------------------------------------------------- */
+.colophon {
+  margin-top: 2.2em;
+  padding-top: .8em;
+  border-top: 2px solid var(--ember);
+  break-inside: avoid;
+}
+.colophon h2 { margin-top: 0; font-size: 12pt; }
+.colophon .line { font: 400 8.2pt/1.5 var(--sans); color: var(--fg-3); margin-bottom: .6em; }
+.colophon table { font-size: 8pt; }
+
+/* Print helpers a source may use: <div class="pagebreak"></div>, <div class="keep"> ... </div> */
+.pagebreak { break-after: page; }
+.keep { break-inside: avoid; }
+span[lang="ar"] { font-family: "Noto Naskh Arabic", serif; font-weight: 700; font-size: 1.2em; color: var(--ash); }

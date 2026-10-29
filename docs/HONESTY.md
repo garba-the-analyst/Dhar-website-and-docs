@@ -66,7 +66,11 @@ fails when:
 4. a gate in `status.json` is not written up in Canon Amendment A-1;
 5. a retired claim is on the page, or a survey link is shown while `survey_url` is empty;
 6. the palette, the logo, the three code samples (compiled with the real compiler), the layout at three widths or
-   accessibility fail.
+   accessibility fail;
+7. a Canon source says what exists or how well it works, a section citation between Canon documents points at a section
+   that does not exist, a version or standing in the Canon README or the amendment index differs from its source, the
+   Canon's look leaves the brand palette, or a Canon PDF was not built from the present sources
+   (`python3 tools/canon_check.py`); the website's list of Canon documents is generated from the same sources.
 
 ## 5. Rules for claims
 
@@ -86,7 +90,7 @@ fails when:
 
 The default way to say where Dhar stands, until the author decides otherwise, is two short statements together:
 
-> **Specified:** the Canon, in four volumes, describes a systems language and toolchain with a security, AI and quantum direction.
+> **Specified:** the Canon, in four volumes and two amendments (seventeen documents), describes a systems language and toolchain with a security, AI and quantum direction.
 > **Compiles today:** a Stage 0 compiler for a strict subset, producing Linux x86-64 programs and Windows x64 programs checked in an emulator; every conformance test passes (the count is in `status/status.json`). The Stage 1 compiler in Dhar is scaffolding, and self-hosting has not been attempted.
 
 Use the same two statements, with the numbers filled in from `status.json`, in every proposal and application.

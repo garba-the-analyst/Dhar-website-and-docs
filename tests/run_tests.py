@@ -12,12 +12,17 @@ What it checks
                run, and its output and exit status compared with what the page shows.
   4. DATA      public/index.html equals what tools/render_site.py produces from data/ (so the status board,
                milestones, direction tracks and speed chart cannot drift); the page's benchmark numbers equal
-               data/benchmarks/*.json; every gate in data/status.json is written up in Canon Amendment A-1; no
-               retired claim; the survey is a page of the site, linked with relative links. With --forge-repo
-               it also checks that the data/ copies match that forge-of-dhar checkout.
-  5. BROWSER   Headless Chromium at 360, 768 and 1280 px: no console errors or failed requests, no
+               data/benchmarks/*.json; every gate in data/status.json is written up in Canon Amendment A-1
+               (docs/canon/src/a1_direction.md); no retired claim; the survey is a page of the site, linked with
+               relative links. With --forge-repo it also checks that the data/ copies match that forge-of-dhar checkout.
+  5. CANON     tools/canon_check.py: the Canon sources say nothing about status, lists are well-formed, every
+               section citation between documents resolves, versions agree with the revision logs, the README and the
+               amendment index agree with the sources, the look uses only the brand colours, and every PDF was built
+               from the present sources.
+  6. BROWSER   Headless Chromium at 360, 768 and 1280 px: no console errors or failed requests, no
                sideways scroll, tabs work with the keyboard, the status filter and the Median/Mean
-               toggle work, the copy button copies, and axe-core (with --axe) finds no violations.
+               toggle work, the copy button copies, the Canon section lists all 17 documents with working
+               PDF links, and axe-core (with --axe) finds no violations.
 Needs: Playwright with Chromium. SAMPLES also need nasm and ld.
 """
 import argparse
@@ -187,7 +192,7 @@ def test_data(forge):
             check(ok, "%s matches %s.json" % (row["name"], files[row["name"]]))
     st = json.load(open(os.path.join(REPO, "data", "status.json"), encoding="utf-8"))
     gate_ids = [g["id"] for tr in st["tracks"] for g in tr["gates"]]
-    doc = open(os.path.join(REPO, "docs", "canon", "AMENDMENT-A1-DIRECTION.md"), encoding="utf-8").read()
+    doc = open(os.path.join(REPO, "docs", "canon", "src", "a1_direction.md"), encoding="utf-8").read()
     missing = [g for g in gate_ids if not re.search(r"\b%s\b" % g, doc)]
     check(not missing, "every gate in data/status.json is written up in Canon Amendment A-1 %s" % (missing or ""))
     allowed = {"works", "partly", "designed", "notyet"}
@@ -212,6 +217,24 @@ def test_data(forge):
         r = subprocess.run([sys.executable, os.path.join(REPO, "tools", "sync_from_forge.py"), forge, "--check"], capture_output=True, text=True)
         print("   " + r.stdout.strip())
         check(r.returncode == 0, "data/ and docs/reports/PROGRESS.md match the forge-of-dhar checkout")
+
+
+def test_canon():
+    """The Canon sources, and what is derived from them: the PDFs, the README, the amendment index, and the website's list."""
+    print("CANON")
+    sys.path.insert(0, os.path.join(REPO, "tools"))
+    import canon_check
+    for ok, what in canon_check.run_all():
+        check(ok, what)
+    docs = canon_check.sources()
+    page = read("index.html")
+    import render_site
+    listed = render_site.canon_docs()
+    check(len(listed) == 17 == len(docs), "the website lists %d Canon documents, as many as there are sources (%d)" % (len(listed), len(docs)))
+    for d in listed:
+        check(('href="%s%s"' % (render_site.CANON_PDF_URL, d["file"])) in page and os.path.exists(os.path.join(REPO, "docs", "canon", "pdf", d["file"])),
+              "website links %s, and that PDF exists" % d["file"])
+    check("AMENDMENT-A1-DIRECTION" not in page, "the page does not link the superseded A-1 markdown file")
 
 
 def test_browser(axe):
@@ -255,9 +278,11 @@ def test_browser(axe):
                     check(pg.locator("#board > li:visible").count() == sc[1], "filter: All shows %d rows (status.json)" % sc[1])
                 else:
                     pg.click('[data-filter="all"]')
-                for sec in ("status", "progress", "direction", "language", "pipeline", "speed", "name", "survey"):
+                for sec in ("status", "progress", "direction", "canon", "language", "pipeline", "speed", "name", "survey"):
                     check(pg.locator("#" + sec).count() == 1, "section #%s exists" % sec)
                 check(pg.locator("#direction .track").count() == 3 and pg.locator("#progress .timeline li").count() >= 1, "direction shows 3 tracks and progress shows milestones")
+                check(pg.locator("#canon table tbody tr").count() == 17 and pg.locator("#canon table tbody a").count() == 17, "canon: the table has 17 rows, each with a PDF link")
+                check(pg.locator('nav[aria-label="Sections"] a[href="#canon"]').count() == 1, "the navigation links to the Canon section")
                 check(pg.get_attribute("#survey a.btn", "href") == "survey/", "survey button points at the survey page of this site")
                 v1 = pg.inner_text("#verdict")
                 pg.click('[data-metric="mean"]')
@@ -318,6 +343,7 @@ def main():
     else:
         print("SAMPLES skipped (no --dharc)")
     test_data(os.path.abspath(a.forge_repo) if a.forge_repo else None)
+    test_canon()
     test_browser(a.axe)
     print("\n%d checks, %d failed" % (checks, len(fails)))
     return 1 if fails else 0

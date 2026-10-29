@@ -1,0 +1,104 @@
+{
+  "a1": {
+    "file": "docs/canon/pdf/Amendment_A1_Direction.pdf",
+    "input": "3fed047c66f2615aba5eca62a9d393b2dfc5dce4bab322995d953722c06f1d48",
+    "pages": 8,
+    "version": "1.0"
+  },
+  "a2": {
+    "file": "docs/canon/pdf/Amendment_A2_Stage0_Targets.pdf",
+    "input": "f356a10a76d17c0f3b94e99d3e4ad876e1d4b5f008a325e56b769dd50d7c91ea",
+    "pages": 8,
+    "version": "1.0"
+  },
+  "casting": {
+    "file": "docs/canon/pdf/13_CastingDhar_Adoption_Education.pdf",
+    "input": "0685f92c3fabb3d36e0b4ea7bdf757426f2fcecfe02c667762965ba6f52805b3",
+    "pages": 7,
+    "version": "1.1"
+  },
+  "fueling": {
+    "file": "docs/canon/pdf/14_FuelingDhar_Business_Funding.pdf",
+    "input": "decb9e8216d0a172762bfc8c4603ee7885b3e97ec855723d02e656d88a6b10a8",
+    "pages": 4,
+    "version": "1.1"
+  },
+  "guild": {
+    "file": "docs/canon/pdf/11_GuildOfDhar_Governance.pdf",
+    "input": "f68f259c90553f536f5b2df79529f1890b8d536fd96ce06b860c6ad3f71218ec",
+    "pages": 5,
+    "version": "1.1"
+  },
+  "hallmark": {
+    "file": "docs/canon/pdf/15_HallmarkOfDhar_Legal.pdf",
+    "input": "6e203c9728c4ab6b42deed56ad8645646dd0aad23ebc2e9da4c6bb7be8b71142",
+    "pages": 7,
+    "version": "1.1"
+  },
+  "master_index": {
+    "file": "docs/canon/pdf/Canon_of_Dhar_Master_Index.pdf",
+    "input": "8640e7010c76e2f635abeb754372da366a71f24d53bb510a9d4ab9ab0bfda464",
+    "pages": 7,
+    "version": "1.1"
+  },
+  "pact": {
+    "file": "docs/canon/pdf/ThePact_Program_Management.pdf",
+    "input": "062f548964b1678f4c7faae7169d3e147e4801d728929cbcb9761ad3f9208a4e",
+    "pages": 7,
+    "version": "1.1"
+  },
+  "spec0": {
+    "file": "docs/canon/pdf/Spec0_Overview_and_Vision.pdf",
+    "input": "6c07f7223723ce426beaef57da35cf1dd725b8e7dce8fba08cd6523d23db48af",
+    "pages": 11,
+    "version": "1.3"
+  },
+  "spec1": {
+    "file": "docs/canon/pdf/Spec1_Language_Specification.pdf",
+    "input": "a196ba2a911d0381bbff9f0e5f81752a06b45cbb70acfe6a6727f190b33b8314",
+    "pages": 29,
+    "version": "3.2"
+  },
+  "stage_alpha": {
+    "file": "docs/canon/pdf/StageAlpha_Forge_of_Dhar.pdf",
+    "input": "0f117b543a2e02dd6c04474c244f444fbdb4b56b4bc3eecf87b71cd55d660bd5",
+    "pages": 6,
+    "version": "1.1"
+  },
+  "stage_beta": {
+    "file": "docs/canon/pdf/6_StageBeta_Honing_Dhar.pdf",
+    "input": "b7e190b0ecbc5ac3949183fccae1633092d899a5b97c3605363e32d5149d96b1",
+    "pages": 5,
+    "version": "1.1"
+  },
+  "stage_delta": {
+    "file": "docs/canon/pdf/8_StageDelta_Gearing_Dhar.pdf",
+    "input": "056ac6b847502fcfbde34da7e9689023861d8d068f0c7accce695b2913c41b21",
+    "pages": 8,
+    "version": "2.2"
+  },
+  "stage_epsilon": {
+    "file": "docs/canon/pdf/9_StageEpsilon_Deploying_Dhar.pdf",
+    "input": "664f2e928be9d18808c2c77b3ee017fb85b30fbd3c5d70f583cd24cfa62664af",
+    "pages": 4,
+    "version": "1.1"
+  },
+  "stage_gamma": {
+    "file": "docs/canon/pdf/7_StageGamma_Optimizing_Dhar.pdf",
+    "input": "5bb71c4ce5bbe1ca3a00f83bb45d62d115cf947004df32660249987808554e2a",
+    "pages": 4,
+    "version": "1.1"
+  },
+  "tempering": {
+    "file": "docs/canon/pdf/12_TemperingDhar_Security_Assurance.pdf",
+    "input": "56c8f1dd83c21e1ae4aa22356f58615c0eb01bcdf891a5463a41e7930b155bed",
+    "pages": 13,
+    "version": "1.1"
+  },
+  "tooling": {
+    "file": "docs/canon/pdf/10_ToolingDhar_Developer_Experience.pdf",
+    "input": "d4280097e1be247e1acf792f7265dff8dab907ccf502bdd9fce5d8f1b78d0162",
+    "pages": 7,
+    "version": "1.0"
+  }
+}

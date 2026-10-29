@@ -1,37 +1,58 @@
-# Canon Amendment A-1: Direction
-
-**Security first, then artificial intelligence, then quantum computing**
-
-| | |
-| --- | --- |
-| Amends | Spec0, Spec1, Stage-alpha to Stage-epsilon, the Volume III documents, the Pact (the per-document list is in [AMENDMENT-INDEX.md](AMENDMENT-INDEX.md)) |
-| Kind | Forward-looking specification, in the voice of the Canon. It states what Dhar is to become and the tests that say when it has. |
-| Standing | **Proposed, awaiting the author's ratification** (see section 11). Until ratified it is a draft and the other Canon documents are unchanged. |
-| Contains no status | Per the Canon's standing directive, this document says nothing about what exists today. That lives in [PROGRESS.md](../reports/PROGRESS.md) and `data/status.json`. |
-
+---
+key: a1
+file: Amendment_A1_Direction.pdf
+kind: amendment
+volume: "Canon Amendment A-1"
+short: "Amendment A-1"
+title: "Amendment A-1 — Direction"
+quote: "Security first, then artificial intelligence, then quantum computing."
+version: "1.0"
+date: "October 26, 2026"
+status: "Ratified"
+running: "DHAR — AMENDMENT A-1 · Direction"
+part_label: "THE CANON OF DHAR · AMENDMENTS"
+contents: true
+cover:
+  - Amends: "Spec0, Spec1, Stage-alpha to Stage-epsilon, the Volume III documents, The Pact (the Master Index, §8.2, lists the changes)"
+  - Kind: "Forward-looking specification, in the voice of the Canon: it states what Dhar is to become and the tests that say when it has"
+  - "Part of": "The Canon of Dhar, Amendments"
+  - "Companion": "Amendment A-2 — Stage 0 Targets"
+  - "Author & Project Lead": "Abdullahi Baba Garba"
+colophon: "Contains no status: what exists today is in the Progress Reports, which are outside the Canon."
+revisions:
+  - v: "v0.1"
+    date: "October 22, 2026"
+    text: "Drafted as a proposal: direction, principles P1–P5, tracks S, A and Q, design requirements R1–R5, acceptance gates."
+  - v: "v1.0"
+    date: "October 26, 2026"
+    text: "Ratified on the author's instruction of October 25, 2026 to apply every amendment to every Canon document. Principle P6 added (breadth is kept, as modules); §1, §2, §7, §8 and §10 aligned with Amendment A-2 and with P6; ratification block completed."
 ---
 
-## 1. Why this amendment exists
+
+# 1. Why this amendment exists
 
 The Canon already names the domains Dhar is for: systems, hardware, backend and web, cybersecurity, data and AI,
 blockchain. It does not say which comes first, and it does not say how anyone will know that Dhar has become good at
 any of them. This amendment does both.
 
-It is not a change of course. The founding ambition stands: C-class performance, Java-class safety, Python-class
-readability, complete independence from LLVM, the JVM and any outside runtime, and a language and toolchain built in
-Nigeria for Nigerian and African technological independence. What is added is an order of attack, a set of design
-requirements that must be built into the compiler early so they are not bolted on late, and a test for every claim.
+It is not a change of course, and it removes nothing. The founding ambition stands: C-class performance, Java-class
+safety, Python-class readability, complete independence from LLVM, the JVM and any outside runtime, and a language and
+toolchain built in Nigeria for Nigerian and African technological independence. Every use case the Canon already names
+stays: systems and hardware, backend and web, data, blockchain and Web3, and the rest. What is added is an order of
+attack, a set of design requirements that must be built into the compiler early so they are not bolted on late, and a
+test for every claim.
 
-## 2. The direction in one paragraph
+# 2. The direction in one paragraph
 
 Dhar is a systems language for **trustworthy computation**. It goes first to software where a mistake is an attack:
 cryptography, protocols, parsers, forensic and defensive tools, anything that handles hostile input. It goes second to
 the systems software under artificial intelligence: inference engines, tokenisers, data pipelines, and small models
 that must run on modest hardware. It goes third to software for the quantum era: cryptography that survives a quantum
 computer, and the description and simulation of quantum programs. The order is chosen because each step uses what the
-one before it built.
+one before it built. The order is a statement about what is built and tested first, never about what Dhar is for: the
+other domains are served by modules on the same core (P6).
 
-## 3. Principles that hold across all three
+# 3. Principles that hold across all three
 
 * **P1. Independence.** The core language, compiler and standard library depend on no outside compiler, runtime or
   library. Outside implementations (OpenSSL, libsodium, NumPy, Qiskit and the like) may be used as *test oracles* to
@@ -45,8 +66,15 @@ one before it built.
   recorded list of what went into every build.
 * **P5. Nothing retrofitted.** What the three tracks need from the compiler (section 8) is designed into the first real
   intermediate representation, even though the features themselves arrive later.
+* **P6. Breadth is kept, as modules.** The three tracks decide the order of work and where acceptance gates are written
+  first. They do not remove, narrow or delay any other use case. Systems and hardware work, backend and web
+  development, data processing, blockchain and Web3, mobile and every other domain the Canon names are delivered as
+  modules on Kun and the standard library, built on the same core and held to the same safety floor (P2), so the language
+  stays modular, robust and able to do what its users need. A module outside the three tracks has no acceptance gate in
+  this amendment; a later amendment may add one, and a module is never held back because a gate has not been written
+  for it.
 
-## 4. Track S: Cybersecurity (first)
+# 4. Track S: Cybersecurity (first)
 
 **Why Dhar fits.** No libc and no runtime means a small attack surface. Checked indexing removes the commonest memory
 error. A compiler written in a few thousand lines of assembly, and later in Dhar itself, is small enough for a person to
@@ -68,6 +96,7 @@ proposals for Spec1 (see the index); the semantics above are the requirement.
 routine passes a timing test (section 9) showing no input-dependent variation.
 
 **S4. A build you can trust.**
+
 1. *Fixed point.* The compiler built by Stage 0 and the compiler that compiler builds are byte-for-byte identical.
 2. *Two independent compilers.* Stage 0 is written in assembly and Stage 1 in Dhar, so they are independent
    implementations. Stage 0 compiles the Stage 1 source, that result compiles it again, and the second result must equal
@@ -77,7 +106,7 @@ routine passes a timing test (section 9) showing no input-dependent variation.
 3. *Reproducible.* Two machines, same source, same flags, identical output.
 4. *Listed.* Every build emits a software bill of materials, and releases are signed.
 
-## 5. Track A: Artificial intelligence (second)
+# 5. Track A: Artificial intelligence (second)
 
 **Why Dhar fits.** A trained model is numbers in arrays and a fixed sequence of operations on them. A language with
 checked bounds, no garbage collector and no runtime can run it with memory use known before it starts and with no pauses.
@@ -98,7 +127,7 @@ framework to a stated tolerance on a fixed test set.
 **A4. Speed, measured.** The gap to optimised C on matrix multiplication and on that network is measured and published,
 whatever it turns out to be. Accelerators (GPUs and similar) and training are outside this track until A4 is met.
 
-## 6. Track Q: Quantum computing (third)
+# 6. Track Q: Quantum computing (third)
 
 Two separate needs share this track.
 
@@ -118,9 +147,10 @@ limit and refuses past it. Results match a reference simulator on a fixed set of
 **Q4. Hardware.** Driving real quantum hardware is outside this amendment until Q2 and Q3 pass and a provider offers an
 interface that Dhar can use without an outside runtime.
 
-## 7. Order and dependencies
+# 7. Order and dependencies
 
-Nothing in sections 4 to 6 starts before Stage 1 compiles itself. Until then the work is the design requirements of
+Nothing in sections 4 to 6 starts before Stage 1 compiles itself, and Stage 1's self-hosting work begins only when
+Stage 0 is complete on every target (Amendment A-2). Until then the work is Stage 0 and the design requirements of
 section 8, and only those. After that, the order is the order of the tracks, with these dependencies:
 
 | Gate | Needs first |
@@ -138,7 +168,7 @@ section 8, and only those. After that, the order is the order of the tracks, wit
 | Q3 | A1; complex type; Q2 |
 | Q4 | Q2, Q3 |
 
-## 8. What Stage 1 must leave room for now
+# 8. What Stage 1 must leave room for now
 
 These are design requirements, not features. They are cheap to include in the first intermediate representation and
 expensive to add after the optimiser exists.
@@ -153,11 +183,12 @@ expensive to add after the optimiser exists.
   bounded and arenas are natural.
 * **R4. Targets described by tables.** The IR's back ends read a description of each processor: vector width, crypto
   instructions (AES, SHA, carry-less multiply, the ARM and RISC-V cryptography extensions), alignment rules. A new
-  processor is a new table and a small emitter, not a new compiler.
+  processor is a new table and a small emitter, not a new compiler. Stage 0 reaches the same targets without an
+  intermediate form (Amendment A-2); Stage 1's back ends are re-implemented on the IR and must pass the same tests.
 * **R5. Stage 1 stays inside what Stage 0 accepts** until the hand-off, as the bootstrap requires. The tracks add nothing
   to Stage 1's scope except R1 to R4.
 
-## 9. Acceptance gates
+# 9. Acceptance gates
 
 A gate is passed only when its test runs in the repository and passes against the named reference.
 
@@ -176,7 +207,7 @@ A gate is passed only when its test runs in the repository and passes against th
 | Q3 | The same circuits, up to the stated qubit limit | A reference simulator | Amplitudes agree to a stated tolerance; the simulator refuses past its limit |
 | Q4 | Not defined until Q2 and Q3 pass | | |
 
-## 10. Non-goals and what Dhar will not claim
+# 10. Non-goals and what Dhar will not claim
 
 * Dhar is not formally verified, and nothing here says it will be.
 * Constant-time is a property of the instructions Dhar emits on an instruction set whose timing is documented. It is not
@@ -184,14 +215,15 @@ A gate is passed only when its test runs in the repository and passes against th
 * No GPU or accelerator support, no model training, no quantum hardware drivers, within this amendment.
 * No public statement says "secure", "safe" or "fast" without naming the gate that backs it. The allowed form is "passes
   gate S3 on these vectors as of this commit".
+* The same rule holds for targets: a statement that Dhar runs on a processor or operating system names the target's gate
+  in Amendment A-2 (section 6 there) and the run that passed it.
 
-## 11. Ratification
+# 11. Ratification
 
-This amendment takes effect when the author signs it. Each document in the index is then amended in the same pass, as
-the Canon's working principle requires (a correction goes into every affected document, not only the first).
+This amendment takes effect when the project lead ratifies it. Each document named in the Master Index (§8.2) is then amended in the same pass, as the Canon's working principle requires: a correction goes into every affected document, not only the first.
 
 | | |
 | --- | --- |
-| Ratified by | |
-| Date | |
-| Notes | |
+| Ratified by | Abdullahi Baba Garba, project lead |
+| Date | October 25, 2026 (instruction to apply the amendment to every Canon document); issued as v1.0 on October 26, 2026 |
+| Notes | The order of the tracks (security, then AI, then quantum) and principle P6 are the author's. The semantics of the secret qualifier, the wide numeric types and the named system calls are ratified here; their keyword and syntax spellings are proposals in Spec1 v3.2 and are marked provisional there until the author fixes them. |

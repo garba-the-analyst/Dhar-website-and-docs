@@ -331,6 +331,15 @@ th { font: 500 .78rem var(--mono); color: var(--fg-3); letter-spacing: .02em; }
 td:first-child { white-space: nowrap; }
 td code { color: var(--fg); }
 td .k { font-family: var(--mono); font-size: .9em; }
+.canon-table td:first-child { white-space: normal; }
+.canon-table td a { color: var(--fg); }
+.canon-table td a:hover, .canon-table td a:focus-visible { color: var(--cyan); }
+.canon-table td.num { font-family: var(--mono); font-size: .9rem; white-space: nowrap; color: var(--fg-2); }
+@media (max-width: 40rem) {   /* on a phone keep the three columns that matter: document, version, standing */
+  .canon-table th:nth-child(2), .canon-table td:nth-child(2),
+  .canon-table th:nth-child(5), .canon-table td:nth-child(5) { display: none; }
+  .canon-table th, .canon-table td { padding-right: .6rem; }
+}
 .later { margin: 1.1rem 0 0; max-width: 62rem; }
 .later code { color: var(--fg); }
 

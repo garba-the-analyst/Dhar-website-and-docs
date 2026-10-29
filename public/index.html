@@ -62,6 +62,7 @@
       <a href="#language">Language</a>
       <a href="#progress">Progress</a>
       <a href="#direction">Direction</a>
+      <a href="#canon">Canon</a>
       <a href="#pipeline">Pipeline</a>
       <a href="#speed">Speed</a>
       <a href="#name">Name</a>
@@ -99,7 +100,7 @@
         <a class="btn" href="#language">Read the code</a>
         <!--survey-hero--><a class="btn quiet" href="survey/">Shape Dhar: take the survey</a><!--/survey-hero-->
       </div>
-      <p class="facts"><b>Stage 0</b> in NASM x86-64 &middot; <b>Linux x86-64</b> output, <b>Windows x64</b> in testing &middot; <b>MIT</b> licence &middot; status checked <b><!--asof-short-->25 Oct 2026<!--/asof-short--></b></p>
+      <p class="facts"><b>Stage 0</b> in NASM x86-64 &middot; <b>Linux x86-64</b> output, <b>Windows x64</b> in testing &middot; <b>MIT</b> licence &middot; status checked <b><!--asof-short-->29 Oct 2026<!--/asof-short--></b></p>
     </div>
   </div>
 </section>
@@ -152,8 +153,8 @@
       </li>
       <li data-status="notyet">
         <span class="chip notyet">Not yet</span>
-        <div><h3>Targets: ARM64, RISC-V, WebAssembly (WASI)</h3>
-        <p><code>dharc</code> refuses these with an error rather than producing the wrong output. The author decided on 23 October 2026 to build them in Stage 0 itself (not postpone them to Stage 1); nothing of that is built yet, and each target is switched on only when the whole test battery passes on it. The Canon still says Stage 0 targets x86-64 only, so the decision needs Canon amendment A-2.</p></div>
+        <div><h3>Targets: Linux ARM64, Linux RISC-V 64, WebAssembly (WASI), macOS</h3>
+        <p><code>dharc</code> refuses these with an error rather than producing the wrong output. The author decided on 23 October 2026 to build them in Stage 0 itself (not postpone them to Stage 1), and on 25 October extended that to every processor and operating system the Canon names. That decision is now in the Canon as Amendment A-2, which lists the committed targets in one place. Nothing of it is built yet: each target is switched on only when the whole test battery passes on it in an emulator (gate G0), and counts as complete only when it passes on a real system (gate G1).</p></div>
       </li>
       <li data-status="designed">
         <span class="chip designed">Designed</span>
@@ -168,7 +169,7 @@
       <li data-status="designed">
         <span class="chip designed">Designed</span>
         <div><h3>Cybersecurity, AI and quantum direction</h3>
-        <p>The direction and its acceptance gates are written down as Canon Amendment A-1, a draft that still needs the author's ratification. Nothing for them is built yet: no <code>std.crypto</code>, no float or tensor types, no quantum back end.</p></div>
+        <p>The direction and its acceptance gates are written down as Canon Amendment A-1, ratified on the author's instruction of 25 October and issued on 26 October 2026; every Canon document now carries it. Nothing for them is built yet: no <code>std.crypto</code>, no float or tensor types, no quantum back end.</p></div>
       </li>
       <li data-status="notyet">
         <span class="chip notyet">Not yet</span>
@@ -185,14 +186,14 @@
         <div><h3>Modules, standard library, <code>Kun</code></h3>
         <p><code>pull</code> and <code>expose</code> are validated but link a single file. There is no importer, no standard library and no package manager yet; programs call the system directly.</p></div>
       </li>
-      <li data-status="notyet">
-        <span class="chip notyet">Not yet</span>
+      <li data-status="designed">
+        <span class="chip designed">Designed</span>
         <div><h3>Try Dhar in the browser</h3>
-        <p>Planned for this website. It needs a way to run <code>dharc</code> and the result in the browser, and nothing of that exists yet.</p></div>
+        <p>Specified in Tooling Dhar §5, a Canon document that is proposed and not yet ratified: the first version compiles a visitor's program on a sandboxed service that keeps nothing, and runs the result in the visitor's browser; a later version runs the compiler in the page. It needs the WebAssembly target, which is not built, so nothing of the playground exists yet.</p></div>
       </li>
 <!-- status:board:end -->
     </ul>
-    <p class="stamp">Checked <!--asof-long-->25 October 2026<!--/asof-long--> against <code>forge-of-dhar</code>, last code change <code><!--commit-forge-->f763ff9<!--/commit-forge--></code>, and <code>honing-dhar</code> at commit <code><!--commit-honing-->cfa336b<!--/commit-honing--></code>. This board is generated from one status file in the repository.</p>
+    <p class="stamp">Checked <!--asof-long-->29 October 2026<!--/asof-long--> against <code>forge-of-dhar</code>, last code change <code><!--commit-forge-->f763ff9<!--/commit-forge--></code>, and <code>honing-dhar</code> at commit <code><!--commit-honing-->cfa336b<!--/commit-honing--></code>. This board is generated from one status file in the repository.</p>
   </div>
 </section>
 
@@ -205,6 +206,7 @@
     </div>
     <ol class="timeline">
 <!-- status:milestones:start -->
+      <li><time datetime="2026-10-29">29 Oct 2026</time><div><h3>Canon amended: direction and targets in every document</h3><p>Between 25 and 29 October all fifteen Canon documents were amended for Amendment A-1 (security, then AI, then quantum; breadth kept as modules) and Amendment A-2 (every processor and operating system in Stage 0, with the gates G0 and G1). A new document, Tooling Dhar, specifies the diagnostics, the editor server and the in-browser playground; it is Proposed, not ratified. The documents are built as PDFs in the website's colours from Markdown sources in the Dhar-website-and-docs repository. The Hallmark gains a section on personal data under the Nigeria Data Protection Act, which says that counsel qualified in Nigerian law must review it before any data is collected. No compiler change in this period: 108 tests, unchanged.</p></div></li>
       <li><time datetime="2026-10-25">25 Oct 2026</time><div><h3>Website, survey and Canon moved to their own repository</h3><p>The website, the survey (now a page of the website, at /survey/), the Canon documents and the progress reports live in one branch of the Dhar-website-and-docs repository, served from Render at https://dhar.onrender.com instead of GitHub Pages. This replaces the GitHub Pages step in Progress Report 001. The survey saves answers in a Supabase database; its table rules were checked on PostgreSQL (36 checks) and the page against an imitation of the service, but not yet against the live project.</p></div></li>
       <li><time datetime="2026-10-25">25 Oct 2026</time><div><h3>Buffer address in <code>scan</code> fixed</h3><p>Checking the Stage 1 sources against the compiler turned up a wrong stack offset: for <code>scan</code> over a local buffer the compiler wrote the buffer's address as <code>rbp-4294967336</code> instead of <code>rbp-40</code>. <code>nasm</code> warned and cut the number down to the right value, so programs printed the right answer and nothing visibly failed. The compiler now writes the right offset; two new tests check the output and the assembly text, and the assembly test fails on the previous compiler. 108 tests pass on both targets.</p></div></li>
       <li><time datetime="2026-10-24">24 Oct 2026</time><div><h3><code>gen(...)</code> is the print function</h3><p>Printing no longer needs a buffer and a raw system call: <code>gen("text")</code>, <code>gen(42)</code> and <code>gen(name)</code> write a string, a number or a variable, for variables declared with a type and for ones whose type was inferred (<code>lock x = 5</code>). <code>gen</code> is strict: parentheses, exactly one argument, and a name that is an <code>i32</code>, <code>str</code> or <code>bool</code>. While testing it, a global <code>flux g: i32 = 77</code> turned out to be silently ignored (the variable stayed 0); the compiler now rejects it with a message, and it is listed as a limit, not fixed. 108 tests pass on both targets; the new tests fail on the previous compiler.</p></div></li>
@@ -351,7 +353,7 @@ unknown</pre>
   <div class="wrap">
     <div class="sec-head">
       <h2 id="direction-h">Where Dhar is going</h2>
-      <p><!--tracks-intro-->Security first, then AI, then quantum. None of this is built. It starts after Stage 1 compiles itself; until then the work is to leave room for it in the design. Each line below is a gate: a test that must pass before the line is called done.<!--/tracks-intro--></p>
+      <p><!--tracks-intro-->Security first, then AI, then quantum. None of this is built. It starts after Stage 1 compiles itself; until then the work is to leave room for it in the design. Each line below is a gate: a test that must pass before the line is called done. Web, backend, data, blockchain and the other domains stay, as modules on the same core.<!--/tracks-intro--></p>
     </div>
     <div class="tracks">
 <!-- status:tracks:start -->
@@ -390,7 +392,44 @@ unknown</pre>
       </article>
 <!-- status:tracks:end -->
     </div>
-    <p class="note">The reasons, the design requirements being built into Stage 1 now, and the exact tests are in <a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/AMENDMENT-A1-DIRECTION.md" rel="noopener">Canon Amendment A-1</a>.</p>
+    <p class="note">The reasons, the design requirements that Stage 1 has to leave room for, and the exact tests are in <a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/Amendment_A1_Direction.pdf" rel="noopener">Canon Amendment A-1</a>; the targets are in <a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/Amendment_A2_Stage0_Targets.pdf" rel="noopener">Amendment A-2</a>.</p>
+  </div>
+</section>
+
+<!-- ============================ CANON ============================ -->
+<section class="sec" id="canon" aria-labelledby="canon-h">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 id="canon-h">The Canon of Dhar</h2>
+      <p>The Canon is the written specification of what Dhar is to become, and the tests that say when it has. It contains no status: what exists is on this page above. Seventeen documents, in reading order, each a PDF; the two amendments carry the direction (A-1) and the targets (A-2) into every other document. <b>Proposed</b> means the document waits for the author's ratification.</p>
+    </div>
+<!-- canon:list:start -->
+      <div class="table-wrap">
+        <table class="canon-table">
+          <thead><tr><th scope="col">Document (PDF)</th><th scope="col">Volume</th><th scope="col">Version</th><th scope="col">Standing</th><th scope="col">Pages</th></tr></thead>
+          <tbody>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/Canon_of_Dhar_Master_Index.pdf" rel="noopener">The Canon of Dhar — Master Index</a></td><td class="num">Index</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">7</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/Spec0_Overview_and_Vision.pdf" rel="noopener">Spec0 — Overview &amp; Vision</a></td><td class="num">I</td><td class="num">v1.3</td><td class="num">Ratified</td><td class="num">11</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/Spec1_Language_Specification.pdf" rel="noopener">Spec1 — Language Specification</a></td><td class="num">I</td><td class="num">v3.2</td><td class="num">Ratified</td><td class="num">29</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/StageAlpha_Forge_of_Dhar.pdf" rel="noopener">Stage-alpha — Forge of Dhar</a></td><td class="num">II</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">6</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/6_StageBeta_Honing_Dhar.pdf" rel="noopener">Stage-beta — Honing Dhar</a></td><td class="num">II</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">5</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/7_StageGamma_Optimizing_Dhar.pdf" rel="noopener">Stage-gamma — Optimizing Dhar</a></td><td class="num">II</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">4</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/8_StageDelta_Gearing_Dhar.pdf" rel="noopener">Stage-delta — Gearing Dhar</a></td><td class="num">II</td><td class="num">v2.2</td><td class="num">Ratified</td><td class="num">8</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/9_StageEpsilon_Deploying_Dhar.pdf" rel="noopener">Stage-epsilon — Deploying Dhar</a></td><td class="num">II</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">4</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/10_ToolingDhar_Developer_Experience.pdf" rel="noopener">Tooling Dhar — Developer Tools, Diagnostics &amp; the Playground</a></td><td class="num">III</td><td class="num">v1.0</td><td class="num">Proposed</td><td class="num">7</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/11_GuildOfDhar_Governance.pdf" rel="noopener">The Guild of Dhar — Governance &amp; Community</a></td><td class="num">III</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">5</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/12_TemperingDhar_Security_Assurance.pdf" rel="noopener">Tempering Dhar — Security, Assurance &amp; Defence-Grade Engineering</a></td><td class="num">III</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">13</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/13_CastingDhar_Adoption_Education.pdf" rel="noopener">Casting Dhar — Adoption, Education &amp; Pan-African Strategy</a></td><td class="num">III</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">7</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/14_FuelingDhar_Business_Funding.pdf" rel="noopener">Fueling Dhar — Business Model, Sustainability &amp; Funding</a></td><td class="num">III</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">4</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/15_HallmarkOfDhar_Legal.pdf" rel="noopener">The Hallmark of Dhar — Legal, Licensing, IP &amp; Export Posture</a></td><td class="num">III</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">7</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/ThePact_Program_Management.pdf" rel="noopener">The Pact of Developing Dhar</a></td><td class="num">IV</td><td class="num">v1.1</td><td class="num">Ratified</td><td class="num">7</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/Amendment_A1_Direction.pdf" rel="noopener">Amendment A-1 — Direction</a></td><td class="num">Amendment</td><td class="num">v1.0</td><td class="num">Ratified</td><td class="num">8</td></tr>
+          <tr><td><a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/pdf/Amendment_A2_Stage0_Targets.pdf" rel="noopener">Amendment A-2 — Stage 0 Targets</a></td><td class="num">Amendment</td><td class="num">v1.0</td><td class="num">Ratified</td><td class="num">8</td></tr>
+          </tbody>
+        </table>
+      </div>
+<!-- canon:list:end -->
+    <p class="note">How each document was changed, and where, is in the <a href="https://github.com/garba-the-analyst/dhar-website-and-docs/blob/main/docs/canon/AMENDMENT-INDEX.md" rel="noopener">amendment index</a>; the sources the PDFs are built from are in <a href="https://github.com/garba-the-analyst/dhar-website-and-docs/tree/main/docs/canon/src" rel="noopener">docs/canon/src</a>.</p>
   </div>
 </section>
 
@@ -418,16 +457,18 @@ unknown</pre>
 
     <div class="target">
       <h3>Where the design is heading</h3>
-      <p class="note" style="max-width:var(--measure)">One front end and a machine-independent middle, with a small back end per processor. Today Stage 0 goes straight from source to x86-64 and skips the middle.</p>
+      <p class="note" style="max-width:var(--measure)">One front end and a machine-independent middle, with a small back end per processor. Stage 0 goes straight from source to assembly for each target and skips the middle; the Canon keeps it that way for every target (Amendment A-2), and the middle begins with Stage 1.</p>
       <ul class="flow" aria-label="Planned compiler pipeline">
         <li>Dhar source</li><li>Lexer, parser</li><li>Types</li><li>Universal IR</li>
         <li class="ends"><ul class="backends">
 <!-- status:backends:start -->
 <li><span class="chip works">x86-64 Linux</span></li>
 <li><span class="chip partly">x86-64 Windows</span></li>
-<li><span class="chip designed">ARM64</span></li>
-<li><span class="chip designed">RISC-V</span></li>
+<li><span class="chip designed">ARM64 Linux</span></li>
+<li><span class="chip designed">RISC-V 64 Linux</span></li>
 <li><span class="chip designed">WebAssembly</span></li>
+<li><span class="chip designed">macOS x86-64</span></li>
+<li><span class="chip designed">macOS ARM64</span></li>
 <!-- status:backends:end -->
 </ul></li>
       </ul>
@@ -576,7 +617,7 @@ unknown</pre>
   <div class="wrap">
     <div>
       <svg class="mark" viewBox="-14 -14 710.2 288" role="img" aria-label="Dhar. Bare Metal. Absolute Control."><use href="#dhar-logo"/></svg>
-      <p class="small">&copy; 2026 Abdullahi Baba Garba. MIT licence. Fonts: Saira, JetBrains Mono and Noto Naskh Arabic, under the SIL Open Font License. Status as of <!--asof-long-->25 October 2026<!--/asof-long-->.</p>
+      <p class="small">&copy; 2026 Abdullahi Baba Garba. MIT licence. Fonts: Saira, JetBrains Mono and Noto Naskh Arabic, under the SIL Open Font License. Status as of <!--asof-long-->29 October 2026<!--/asof-long-->.</p>
     </div>
     <ul>
       <li><a href="https://github.com/garba-the-analyst/forge-of-dhar" rel="noopener">forge-of-dhar: Stage 0</a></li>

@@ -5,6 +5,8 @@ render_site.py - writes everything on the website that states what Dhar can do, 
     data/status.json       what works, what is designed, milestones, direction tracks
     data/benchmarks/*.json the hyperfine results
     data/site.json         where the site and the survey are hosted (the only settings)
+    docs/canon/src/*.md    the Canon's front matter (title, version, standing), for the list of documents
+    docs/canon/pdf/MANIFEST.json   the page count and file of each built Canon PDF
 
     python3 tools/render_site.py            rewrite the generated blocks in public/index.html
     python3 tools/render_site.py --check    change nothing; exit 1 if the page is out of date
@@ -33,6 +35,18 @@ PAGE = os.path.join(REPO, "public", "index.html")
 SURVEY_PAGE = os.path.join(REPO, "public", "survey", "index.html")
 LABEL = {"works": "Works", "partly": "Partly", "designed": "Designed", "notyet": "Not yet"}
 DOCS_URL = "https://github.com/garba-the-analyst/dhar-website-and-docs"
+
+# The Canon, in reading order: (source key, source file). The list of documents on the page is generated from these
+# sources' front matter and from the build manifest, so a version or standing shown on the page cannot differ from the PDF.
+CANON_ORDER = [
+    ("master_index", "master_index.md"), ("spec0", "spec0.md"), ("spec1", "spec1.md"),
+    ("stage_alpha", "stage_alpha.md"), ("stage_beta", "stage_beta.md"), ("stage_gamma", "stage_gamma.md"),
+    ("stage_delta", "stage_delta.md"), ("stage_epsilon", "stage_epsilon.md"),
+    ("tooling", "tooling.md"), ("guild", "guild.md"), ("tempering", "tempering.md"),
+    ("casting", "casting.md"), ("fueling", "fueling.md"), ("hallmark", "hallmark.md"), ("pact", "pact.md"),
+    ("a1", "a1_direction.md"), ("a2", "a2_stage0_targets.md"),
+]
+CANON_PDF_URL = DOCS_URL + "/blob/main/docs/canon/pdf/"
 
 BENCH_FILES = [  # (display name, result file, group)
     ("C (raw, -O3)", "c_raw__nostdlib", "Compiled ahead of time"),
@@ -121,6 +135,41 @@ def html_tracks(st):
     return "\n".join(out)
 
 
+def canon_docs():
+    """One dict per Canon document, in reading order: title, version, standing, volume label, pages, PDF file name.
+    Read from the sources' front matter and from docs/canon/pdf/MANIFEST.json (written by tools/build_canon.py)."""
+    try:
+        import yaml
+    except ImportError:
+        raise SystemExit("render_site.py needs PyYAML to read the Canon front matter: pip install pyyaml")
+    manifest = jload("docs", "canon", "pdf", "MANIFEST.json")
+    out = []
+    for key, fname in CANON_ORDER:
+        with open(os.path.join(REPO, "docs", "canon", "src", fname), encoding="utf-8") as f:
+            meta = yaml.safe_load(f.read().split("---", 2)[1])
+        if key not in manifest:
+            raise SystemExit("Canon document %s is not in docs/canon/pdf/MANIFEST.json: run python3 tools/build_canon.py" % key)
+        vol = meta["volume"]
+        label = vol.split(" \u2014 ")[0].replace("Volume ", "") if vol.startswith("Volume ") else ("Amendment" if key in ("a1", "a2") else "Index")
+        out.append({
+            "key": key, "title": meta["title"], "version": str(meta["version"]), "volume": label,
+            "standing": meta["status"].split(" \u2014 ")[0], "pages": manifest[key]["pages"],
+            "file": os.path.basename(manifest[key]["file"]),
+        })
+    return out
+
+
+def html_canon(docs):
+    rows = "\n".join(
+        '          <tr><td><a href="%s%s" rel="noopener">%s</a></td><td class="num">%s</td><td class="num">%s</td><td class="num">%s</td><td class="num">%d</td></tr>'
+        % (CANON_PDF_URL, d["file"], html.escape(d["title"]), html.escape(d["volume"]), html.escape("v" + d["version"]),
+           html.escape(d["standing"]), d["pages"])
+        for d in docs)
+    return ('      <div class="table-wrap">\n        <table class="canon-table">\n'
+            '          <thead><tr><th scope="col">Document (PDF)</th><th scope="col">Volume</th><th scope="col">Version</th><th scope="col">Standing</th><th scope="col">Pages</th></tr></thead>\n'
+            '          <tbody>\n%s\n          </tbody>\n        </table>\n      </div>' % rows)
+
+
 def bench_json(bench):
     groups = []
     for g in ("Compiled ahead of time", "Runtimes"):
@@ -185,6 +234,7 @@ def render(page, st, bench, site, src):
     t = replace_block(t, "status:backends", html_backends(st))
     t = replace_block(t, "status:milestones", html_milestones(st))
     t = replace_block(t, "status:tracks", html_tracks(st))
+    t = replace_block(t, "canon:list", html_canon(canon_docs()))
     t = replace_block(t, "site:meta", meta_block(site))
     t = replace_inline(t, "tracks-intro", code_html(st["tracks_intro"]))
     t = replace_inline(t, "asof-short", short_date(st["as_of"]))
